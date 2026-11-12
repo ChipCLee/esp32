@@ -21,7 +21,7 @@ The device operates entirely without external cloud infrastructure:
 
 | ID | Requirement Category | Specification Details |
 | :--- | :--- | :--- |
-| **FR-1** | **Wi-Fi SoftAP & Web Server** | Broadcast a standalone 802.11ax/n Access Point (`SSID: ESP32-C6-Scanner`, default IP: `192.168.4.1`) with a lightweight embedded HTTP server serving a single-page responsive dashboard. |
+| **FR-1** | **Wi-Fi SoftAP & Web Server** | Broadcast a standalone 802.11ax/n Access Point (`SSID: chip-scanner`, default IP: `192.168.4.1`) with a lightweight embedded HTTP server serving a single-page responsive dashboard. |
 | **FR-2** | **Wi-Fi Device Discovery** | Perform periodic active/passive channel scans across 2.4 GHz channels 1–13. Capture SSID, BSSID (MAC), RSSI, channel, encryption type (Open, WPA2, WPA3), and 802.11 generation (Wi-Fi 4/5/6). |
 | **FR-3** | **BLE 5.3 Discovery** | Execute active BLE scanning cycles to discover BLE peripherals, beacons, smart trackers (Apple AirTags, Tile, SmartTags), and environmental sensors (e.g., Govee/Mijia broadcasting temperature/humidity in manufacturer data payloads). |
 | **FR-4** | **IEEE 802.15.4 / Zigbee Discovery** | Scan channels 11–26 for 802.15.4 energy levels, beacon requests, and active Zigbee/Thread networks. Extract PAN IDs, Extended PAN IDs, channels, and LQI (Link Quality Indication). |
@@ -143,7 +143,7 @@ The ST7789 color display is configured at **$172 \times 320$ pixels** in portrai
 ```
 ┌──────────────────────────────────────────────┐ 0 px
 │  ESP32-C6 SPECTRUM HUB         [STATE: IDLE] │
-│  SSID: ESP32-C6-Scanner        IP: 192.168.4.1│
+│  SSID: chip-scanner            IP: 192.168.4.1│
 │  Connected Users: 2 👥         Auth: ACTIVE 🔒│
 ├──────────────────────────────────────────────┤ 50 px
 │ DETECTED DEVICES BREAKDOWN                   │
@@ -277,7 +277,7 @@ flowchart LR
 
 | Test ID | Test Category | Procedure / Input | Acceptance Criteria |
 | :--- | :--- | :--- | :--- |
-| **TC-01** | **SoftAP Stability** | Connect 3 mobile devices to `ESP32-C6-Scanner` and browse dashboard concurrently. | All 3 devices load dashboard in $< 2\text{s}$; zero disconnects during scans. |
+| **TC-01** | **SoftAP Stability** | Connect 3 mobile devices to `chip-scanner` and browse dashboard concurrently. | All 3 devices load dashboard in $< 2\text{s}$; zero disconnects during scans. |
 | **TC-02** | **Wi-Fi Detection** | Place device near 2.4 GHz routers (WPA2, WPA3, Open). | Detects $\ge 90\%$ of local 2.4 GHz APs within 2 scan cycles. |
 | **TC-03** | **BLE Tracking** | Bring an Apple AirTag and a BLE temperature sensor within 5 meters. | Displays MAC/Payload, identifies tag type, and reads temperature in $< 5\text{s}$. |
 | **TC-04** | **Zigbee Detection** | Trigger pairing mode on an IKEA/Tuya Zigbee bulb or sensor. | Captures 802.15.4 beacon request, displays PAN ID and channel on web UI and LCD. |

@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>chip-scanner | ESP32-C6 Multi-Protocol Spectrum Hub</title>
+<style>
+:root {
+  --bg: #0b0f19;
+  --panel: #131b2e;
+  --panel-alt: #1a2540;
+  --border: #283655;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --wifi: #0066cc;
+  --ble: #0099ff;
+  --zigbee: #8b5cf6;
+  --matter: #f59e0b;
+  --green: #10b981;
+  --danger: #ef4444;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  padding: 16px;
+}
+.container { max-width: 1240px; margin: 0 auto; }
+header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+.title-group h1 { font-size: 1.35rem; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+.title-group p { font-size: 0.85rem; color: var(--muted); }
+.status-pill {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--green);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+.status-pill.scanning {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.5);
+}
+.sys-meta { display: flex; flex-wrap: wrap; gap: 16px; font-size: 0.85rem; color: var(--muted); }
+.sys-meta strong { color: var(--text); }
+
+/* Metrics Ribbon */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.metric-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  position: relative;
+  overflow: hidden;
+}
+.metric-card::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; width: 4px; height: 100%;
+}
+.metric-card.wifi::before { background: var(--wifi); }
+.metric-card.ble::before { background: var(--ble); }
+.metric-card.zigbee::before { background: var(--zigbee); }
+.metric-card.matter::before { background: var(--matter); }
+.metric-card.users::before { background: var(--green); }
+.metric-label { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.metric-val { font-size: 1.75rem; font-weight: 700; margin-top: 4px; }
+
+/* Action Toolbar */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+.btn-group { display: flex; flex-wrap: wrap; gap: 8px; }
+button, .btn {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--panel-alt);
+  color: var(--text);
+  padding: 8px 13px;
+  border-radius: 8px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+button:hover, .btn:hover { filter: brightness(1.2); border-color: #475569; }
+button.primary { background: var(--wifi); border-color: #2563eb; }
+button.ble-btn { background: #0284c7; border-color: #38bdf8; }
+button.zb-btn { background: #6d28d9; border-color: #a78bfa; }
+button.danger { background: rgba(239, 68, 68, 0.18); color: #fca5a5; border-color: rgba(239, 68, 68, 0.4); }
+
+/* Filter & Search Bar */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tab {
+  padding: 7px 14px;
+  border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+.tab.active {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+  font-weight: 700;
+}
+.search-input {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 14px;
+  border-radius: 8px;
+  min-width: 250px;
+  font-size: 0.85rem;
+}
+
+/* Main Content Grid */
+.content-split {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 16px;
+}
+@media (max-width: 960px) {
+  .content-split { grid-template-columns: 1fr; }
+}
+.card-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.card-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 0.92rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.table-wrap { overflow-x: auto; max-height: 500px; overflow-y: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid rgba(40, 54, 85, 0.5); }
+th {
+  background: var(--panel-alt);
+  color: var(--muted);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  cursor: pointer;
+  user-select: none;
+}
+tr:hover { background: rgba(255, 255, 255, 0.03); }
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+}
+.badge.WIFI { background: var(--wifi); }
+.badge.BLE { background: var(--ble); }
+.badge.ZIGBEE, .badge.\31 5\.4 { background: var(--zigbee); }
+.badge.MAT { background: var(--matter); color: #000; }
+.badge.AP { background: var(--green); }
+
+.rssi-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: monospace;
+}
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
+
+/* Activity Log Console */
+.log-console {
+  background: #060911;
+  padding: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  height: 460px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.log-line { border-bottom: 1px solid #141c2f; padding-bottom: 4px; word-break: break-word; }
+.log-ts { color: #64748b; margin-right: 6px; }
+
+/* Settings Modal */
+.modal-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal-backdrop.open { display: flex; }
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  width: 100%;
+  max-width: 400px;
+}
+.form-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 14px 0;
+  font-size: 0.9rem;
+}
+select, input[type="number"] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="title-group">
+      <h1>
+        📡 ESP32-C6 Multi-Protocol Spectrum Hub
+        <span id="scanBadge" class="status-pill">IDLE</span>
+      </h1>
+      <p>SSID: <strong>chip-scanner</strong> &bull; IP: <strong>192.168.4.1</strong> &bull; LAFVIN LB008 (Wi-Fi 6 / BLE 5.3 / 802.15.4 / Matter)</p>
+    </div>
+    <div class="sys-meta">
+      <div>Free SRAM: <strong id="freeHeap">-- KB</strong></div>
+      <div>Uptime: <strong id="uptimeStr">--</strong></div>
+      <div>Cycles: <strong id="scanCycles">0</strong></div>
+      <div>SD Card: <strong id="sdStatus">--</strong></div>
+    </div>
+  </header>
+
+  <div class="metrics-grid">
+    <div class="metric-card users">
+      <div class="metric-label">Connected Users 👥</div>
+      <div class="metric-val" id="cntUsers">0</div>
+    </div>
+    <div class="metric-card wifi">
+      <div class="metric-label">📶 Wi-Fi 6 / APs</div>
+      <div class="metric-val" id="cntWifi">0</div>
+    </div>
+    <div class="metric-card ble">
+      <div class="metric-label">🔵 BLE 5.3 Nodes</div>
+      <div class="metric-val" id="cntBle">0</div>
+    </div>
+    <div class="metric-card zigbee">
+      <div class="metric-label">⚡ Zigbee / 802.15.4</div>
+      <div class="metric-val" id="cntZigbee">0</div>
+    </div>
+    <div class="metric-card matter">
+      <div class="metric-label">🌐 Matter Devices</div>
+      <div class="metric-val" id="cntMatter">0</div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="btn-group">
+      <button class="primary" onclick="triggerScan('all')">🚀 Scan All</button>
+      <button onclick="triggerScan('wifi')">📶 Scan Wi-Fi</button>
+      <button class="ble-btn" onclick="triggerScan('ble')">🔵 Scan BLE</button>
+      <button class="zb-btn" onclick="triggerScan('zigbee')">⚡ Scan Zigbee / 15.4</button>
+    </div>
+    <div class="btn-group">
+      <a class="btn" href="/api/export.csv" download="discovery.csv">💾 Export CSV</a>
+      <button onclick="exportJson()">💾 Export JSON</button>
+      <button onclick="openSettings()">⚙️ Settings</button>
+      <button class="danger" onclick="clearCache()">🗑️ Clear Cache</button>
+    </div>
+  </div>
+
+  <div class="filter-bar">
+    <div class="tabs">
+      <div class="tab active" onclick="setFilter('ALL', this)">All Protocols (<span id="cntTotal">0</span>)</div>
+      <div class="tab" onclick="setFilter('WIFI', this)">Wi-Fi</div>
+      <div class="tab" onclick="setFilter('BLE', this)">BLE 5.3</div>
+      <div class="tab" onclick="setFilter('15.4', this)">Zigbee / 15.4</div>
+      <div class="tab" onclick="setFilter('MAT', this)">Matter</div>
+    </div>
+    <input type="text" id="searchInput" class="search-input" placeholder="Search SSID, Name, MAC, PAN ID, Sensor..." oninput="renderTable()">
+  </div>
+
+  <div class="content-split">
+    <div class="card-panel">
+      <div class="card-header">
+        <span>Discovered RF Emitters</span>
+        <span style="font-size:0.78rem;color:var(--muted)" id="tableSubStatus">Auto-refreshing every 2s</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th onclick="setSort('proto')">Protocol</th>
+              <th onclick="setSort('name')">Name / SSID / PAN</th>
+              <th onclick="setSort('id')">MAC / Extended ID</th>
+              <th onclick="setSort('ch')">Ch</th>
+              <th onclick="setSort('rssi')">RSSI (dBm) ▼</th>
+              <th>Fingerprint / Details</th>
+              <th onclick="setSort('age')">Seen</th>
+            </tr>
+          </thead>
+          <tbody id="deviceTableBody">
+            <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px;">Scanning spectrum...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card-panel">
+      <div class="card-header">
+        <span>Onboard LCD Activity Log Mirror</span>
+        <span style="font-size:0.75rem;color:var(--green)">LIVE</span>
+      </div>
+      <div class="log-console" id="logConsole"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-backdrop" id="settingsModal">
+  <div class="modal">
+    <h3 style="margin-bottom:12px;">⚙️ Hardware & Scanner Settings</h3>
+    <div class="form-row">
+      <label for="cfgAutoScan">Background Auto-Scan</label>
+      <input type="checkbox" id="cfgAutoScan" checked>
+    </div>
+    <div class="form-row">
+      <label for="cfgInterval">Auto-Scan Cycle Interval</label>
+      <select id="cfgInterval">
+        <option value="10">Every 10 seconds</option>
+        <option value="15" selected>Every 15 seconds</option>
+        <option value="30">Every 30 seconds</option>
+        <option value="60">Every 60 seconds</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label for="cfgBacklight">Onboard 1.47" LCD Backlight</label>
+      <input type="checkbox" id="cfgBacklight" checked>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;">
+      <button onclick="closeSettings()">Cancel</button>
+      <button class="primary" onclick="saveSettings()">Save & Apply</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let allDevices = [];
+let currentFilter = 'ALL';
+let sortField = 'rssi';
+let sortAsc = false;
+
+async function syncRtcClock() {
+  try {
+    const epoch_s = Math.floor(Date.now() / 1000);
+    await fetch('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ epoch_s })
+    });
+  } catch (e) {}
+}
+
+function setFilter(proto, el) {
+  currentFilter = proto;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  if (el) el.classList.add('active');
+  renderTable();
+}
+
+function setSort(field) {
+  if (sortField === field) sortAsc = !sortAsc;
+  else { sortField = field; sortAsc = (field === 'name' || field === 'ch' || field === 'age'); }
+  renderTable();
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderTable() {
+  const tbody = document.getElementById('deviceTableBody');
+  const q = (document.getElementById('searchInput').value || '').toLowerCase();
+
+  let filtered = allDevices.filter(d => {
+    if (currentFilter !== 'ALL' && d.proto !== currentFilter) return false;
+    if (!q) return true;
+    return (d.name && d.name.toLowerCase().includes(q)) ||
+           (d.id && d.id.toLowerCase().includes(q)) ||
+           (d.details && d.details.toLowerCase().includes(q)) ||
+           (d.proto && d.proto.toLowerCase().includes(q));
+  });
+
+  filtered.sort((a, b) => {
+    let va = a[sortField], vb = b[sortField];
+    if (typeof va === 'string') return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+    return sortAsc ? (va - vb) : (vb - va);
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px;">No matching RF devices in current filter.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(d => {
+    const badgeClass = d.proto === '15.4' ? 'ZIGBEE' : d.proto;
+    return `<tr>
+      <td><span class="badge ${escapeHtml(badgeClass)}">${escapeHtml(d.proto)}</span></td>
+      <td><strong>${escapeHtml(d.name)}</strong></td>
+      <td class="mono">${escapeHtml(d.id)}</td>
+      <td class="mono">${d.ch}</td>
+      <td class="rssi-bar">${d.rssi} dBm</td>
+      <td>${escapeHtml(d.details)}</td>
+      <td class="mono">${d.age}s ago</td>
+    </tr>`;
+  }).join('');
+}
+
+async function fetchStatsAndDevices() {
+  try {
+    const [stRes, devRes, logRes] = await Promise.all([
+      fetch('/api/stats'),
+      fetch('/api/devices'),
+      fetch('/api/logs')
+    ]);
+    if (stRes.ok) {
+      const st = await stRes.json();
+      document.getElementById('cntUsers').textContent = st.connected_users;
+      document.getElementById('cntWifi').textContent = st.wifi_count;
+      document.getElementById('cntBle').textContent = st.ble_count;
+      document.getElementById('cntZigbee').textContent = st.zigbee_count;
+      document.getElementById('cntMatter').textContent = st.matter_count;
+      document.getElementById('cntTotal').textContent = st.total_count;
+      document.getElementById('freeHeap').textContent = Math.round(st.free_heap / 1024) + ' KB';
+      document.getElementById('uptimeStr').textContent = st.uptime_s + 's';
+      document.getElementById('scanCycles').textContent = st.scan_cycles;
+      document.getElementById('sdStatus').textContent = st.sd_ready ? 'Mounted' : 'RAM Mode';
+
+      const badge = document.getElementById('scanBadge');
+      badge.textContent = st.scan_state;
+      badge.className = 'status-pill' + (st.scan_state !== 'IDLE' ? ' scanning' : '');
+    }
+    if (devRes.ok) {
+      const data = await devRes.json();
+      allDevices = data.devices || [];
+      renderTable();
+    }
+    if (logRes.ok) {
+      const ldata = await logRes.json();
+      const box = document.getElementById('logConsole');
+      box.innerHTML = (ldata.logs || []).map(l => {
+        const bcls = l.proto === '15.4' ? 'ZIGBEE' : l.proto;
+        return `<div class="log-line">
+          <span class="log-ts">[${escapeHtml(l.ts)}]</span>
+          <span class="badge ${escapeHtml(bcls)}">${escapeHtml(l.proto)}</span>
+          <span> ${escapeHtml(l.msg)}</span>
+        </div>`;
+      }).join('');
+      box.scrollTop = box.scrollHeight;
+    }
+  } catch (e) {}
+}
+
+async function triggerScan(protocol) {
+  const badge = document.getElementById('scanBadge');
+  badge.textContent = 'TRIGGERED: ' + protocol.toUpperCase();
+  badge.className = 'status-pill scanning';
+  await fetch('/api/scan', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ protocol })
+  });
+  setTimeout(fetchStatsAndDevices, 600);
+}
+
+async function clearCache() {
+  await fetch('/api/clear', { method: 'POST' });
+  fetchStatsAndDevices();
+}
+
+function exportJson() {
+  const blob = new Blob([JSON.stringify(allDevices, null, 2)], {type: 'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'chip-scanner-devices.json';
+  a.click();
+}
+
+function openSettings() { document.getElementById('settingsModal').classList.add('open'); }
+function closeSettings() { document.getElementById('settingsModal').classList.remove('open'); }
+
+async function saveSettings() {
+  const auto_scan = document.getElementById('cfgAutoScan').checked;
+  const interval_s = parseInt(document.getElementById('cfgInterval').value, 10);
+  const lcd_backlight = document.getElementById('cfgBacklight').checked;
+  await fetch('/api/config', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ auto_scan, interval_s, lcd_backlight })
+  });
+  closeSettings();
+  fetchStatsAndDevices();
+}
+
+syncRtcClock();
+fetchStatsAndDevices();
+setInterval(fetchStatsAndDevices, 2000);
+</script>
+</body>
+</html>
+

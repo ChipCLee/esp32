@@ -9,7 +9,8 @@ Technical documentation, projects, and reference guides for ESP32 development bo
 
 ### 2. LAFVIN ESP32-C6 (1.47" Color LCD, Model LB008)
 * [LAFVIN ESP32-C6 Reference Guide](lafvin/lafvin-esp32-c6-lcd.md) — Next-gen Wi-Fi 6, BLE 5.3, Zigbee/Thread 802.15.4 specs, ST7789 display setup, and NeoPixel code.
-* [System Design: Multi-Protocol Spectrum Discovery & Web Hub](lafvin/design.md) — Architectural requirements, time-sliced RF coexistence scheduler, embedded web server, deliverables, and validation plan.
+* [Chip-Scanner Firmware (`lafvin/chip-scanner`)](lafvin/chip-scanner/README.md) — Complete multi-protocol RF spectrum discovery firmware (Wi-Fi 6, BLE 5.3, Matter, IEEE 802.15.4 / Zigbee), onboard 1.47" ST7789 HUD, and password-protected web dashboard (`SSID: chip-scanner`).
+* [System Design: Multi-Protocol Spectrum Discovery & Web Hub](lafvin/chip-scanner/design.md) — Architectural requirements, time-sliced RF coexistence scheduler, embedded web server, deliverables, and validation plan.
 
 ---
 

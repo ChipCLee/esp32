@@ -9,7 +9,7 @@ The system leverages the ESP32-C6's integrated **2.4 GHz multi-protocol transcei
 The device operates entirely without external cloud infrastructure:
 1. It hosts a standalone **Wi-Fi SoftAP** and embedded HTTP web server.
 2. Any client device (smartphone, tablet, laptop) connecting to the access point can navigate to a local dashboard (`http://192.168.4.1`) to inspect, filter, and track nearby RF emitters.
-3. The onboard **1.47" IPS color screen** and **WS2812 RGB LED** provide real-time hardware telemetry and scan cycle visualization.
+3. The onboard **1.47" IPS color screen** and **WS2812 RGB LED** provide real-time hardware telemetry, connected user count, protocol breakdown stats, and a live rolling log terminal.
 4. Optional offline captures are written to an onboard **Micro-SD (TF) card**.
 
 ---
@@ -27,7 +27,7 @@ The device operates entirely without external cloud infrastructure:
 | **FR-5** | **Matter Uncommissioned Discovery** | Detect BLE Matter Commissioning advertisements (Service UUID `0xFFF6`) and decode Vendor ID (VID), Product ID (PID), and 12-bit device discriminators. |
 | **FR-6** | **Time-Sliced RF Coexistence** | Implement a deterministic FreeRTOS scheduler that shares the single 2.4 GHz RF frontend among Wi-Fi AP transmission, BLE scanning, and 802.15.4 listening without dropping web client sockets. |
 | **FR-7** | **RESTful API & Real-time Updates** | Expose JSON endpoints (`/api/devices`, `/api/stats`, `/api/scan`) with optional Server-Sent Events (SSE) or polling for real-time frontend refreshes. |
-| **FR-8** | **Hardware Screen UX (ST7789)** | Render live system diagnostics on the onboard 1.47" LCD (172×320): IP address, connected Wi-Fi clients, scan state machine, and discovery tallies per protocol. |
+| **FR-8** | **Hardware Screen UX (Onboard LCD)** | Render a comprehensive real-time status dashboard on the 1.47" ST7789 IPS LCD (172×320):<br>1. **Connection & System Status:** SoftAP SSID, IP address, and **live count of connected Wi-Fi users** (`WiFi.softAPgetStationNum()`).<br>2. **Protocol Breakdown Counters:** Distinct visual counters for detected **Wi-Fi, BLE, Zigbee/802.15.4, and Matter** devices, plus total unique tally.<br>3. **Recent Activity Logs:** A live rolling log window displaying the latest 5–6 system and discovery events with timestamps and protocol badges.<br>4. **Display Mode Toggle:** Support switching between Split Dashboard view and Full-Screen Event Log view via the User Button (`GPIO 9`). |
 | **FR-9** | **RGB Visual Diagnostics (WS2812)** | Use the onboard addressable LED (`GPIO 8`) to display scan states: Blue (BLE scan), Purple (802.15.4 scan), Green (Wi-Fi AP serving), and Red (error/buffer overflow). |
 | **FR-10** | **Local SD Logging** | Record discovery events and timestamps in CSV format onto the onboard Micro-SD card slot for offline RF site-survey analysis. |
 
@@ -37,7 +37,8 @@ The device operates entirely without external cloud infrastructure:
 * **NFR-2 (Web Latency):** Web dashboard first-load time $< 1.2\text{ seconds}$; REST API response latency $< 120\text{ ms}$.
 * **NFR-3 (Coexistence Reliability):** SoftAP beacon loss $< 2\%$ during active BLE and 802.15.4 scan windows.
 * **NFR-4 (Self-Contained & Cloudless):** 100% functionality with zero internet connectivity. All CSS/JS assets bundled in Flash (PROGMEM or LittleFS).
-* **NFR-5 (Graceful Degradation):** Automatic detection of missing Micro-SD card or LCD failure without blocking wireless scanning.
+* **NFR-5 (LCD Refresh Performance):** Screen redraw latency $< 40\text{ ms}$ with partial bounding-box updates to prevent visible display flicker and minimize SPI contention with the SD card.
+* **NFR-6 (Graceful Degradation):** Automatic detection of missing Micro-SD card or LCD failure without blocking wireless scanning.
 
 ---
 
@@ -77,7 +78,7 @@ flowchart TD
 | | SD MISO | `GPIO 5` | SPI Master-In Slave-Out |
 | | SD CS | `GPIO 4` | Independent SD Chip Select |
 | **Addressable RGB** | WS2812 DIN | `GPIO 8` | Driven by hardware RMT peripheral |
-| **User Input** | User/Boot Button| `GPIO 9` | Active-low button to trigger manual scan / toggle display |
+| **User Input** | User/Boot Button| `GPIO 9` | Active-low button to trigger manual scan / toggle display view |
 
 ---
 
@@ -109,7 +110,7 @@ stateDiagram-v2
 * **Slot 2 (BLE Scan Window, $\approx 1.5\text{s}$):** Hardware switches to BLE RX. Discovered advertisement payloads are pushed to an in-memory thread-safe queue.
 * **Slot 3 (Wi-Fi Channel Scan, $\approx 1.0\text{s}$):** The Wi-Fi driver issues non-blocking passive/active probe requests on channels 1–13 while preserving the AP connection.
 * **Slot 4 (802.15.4 Sniff Window, $\approx 1.5\text{s}$):** Radio switches to 802.15.4 packet reception to capture Zigbee beacon frames, channel energy (ED), and PAN IDs.
-* **Slot 5 (Aggregator & Deduplicator):** Merges duplicates, updates device RSSI and last-seen timestamps, pushes telemetry to LCD, and optionally appends records to `discovery.csv` on the SD card.
+* **Slot 5 (Aggregator & Deduplicator):** Merges duplicates, updates device RSSI and last-seen timestamps, pushes telemetry and new log entries to the LCD, and optionally appends records to `discovery.csv` on the SD card.
 
 ---
 
@@ -127,10 +128,10 @@ stateDiagram-v2
 - Stack: 4 KB            - Stack: 6 KB           - Stack: 3 KB           - Stack: 3 KB
 - Async WebServer        - WiFi / BLE / 15.4     - ST7789 UI Loop        - Micro-SD SPI
 - Static Assets          - Deduplication Table   - WS2812 RMT Control    - Circular buffer
-- REST API Handlers      - Circular Ring Buffer  - Page Layout Engine    - Flush to CSV
+- REST API Handlers      - Circular Ring Buffer  - Log Stream Renderer   - Flush to CSV
 ```
 
-#### In-Memory Device Model
+#### In-Memory Device Model & Logging Buffer
 ```cpp
 typedef enum {
     PROTO_WIFI,
@@ -148,17 +149,81 @@ typedef struct {
     char details[48];         // e.g., "WPA3", "Apple AirTag", "PanID: 0x1A2B", "Temp: 23.4C"
     uint32_t last_seen_ms;    // millis() timestamp for expiration/aging
 } discovered_device_t;
+
+// On-screen rolling log entry
+typedef struct {
+    uint32_t timestamp_s;    // Seconds since boot
+    rf_protocol_t protocol;  // Associated protocol (for color tagging)
+    char message[38];        // Event string e.g. "AirTag found -62dBm" or "Client 192.168.4.2 joined"
+} lcd_log_entry_t;
+
+#define LCD_LOG_HISTORY_SIZE 8
+extern lcd_log_entry_t lcd_log_ring_buffer[LCD_LOG_HISTORY_SIZE];
+extern uint8_t lcd_log_head;
 ```
 
 ---
 
-### 3.4 Web Frontend Architecture
+### 3.4 On-board LCD UI/UX Design & Layout (1.47" ST7789)
+
+The ST7789 color display is configured at **$172 \times 320$ pixels** in portrait mode with a **34-pixel column offset**.
+
+The screen layout is divided into three functional zones designed for glanceable telemetry:
+
+```
+┌──────────────────────────────────────────────┐ 0 px
+│  ESP32-C6 SPECTRUM HUB         [STATE: IDLE] │
+│  SSID: ESP32-C6-Scanner        IP: 192.168.4.1│
+│  Connected Users: 2 👥         Uptime: 01h24m │
+├──────────────────────────────────────────────┤ 50 px
+│ DETECTED DEVICES BREAKDOWN                   │
+│ ┌──────────────────────┬───────────────────┐ │
+│ │ 📶 Wi-Fi:   14       │ 🔵 BLE:     32    │ │
+│ ├──────────────────────┼───────────────────┤ │
+│ │ ⚡ Zigbee:   6       │ 🌐 Matter:   2    │ │
+│ └──────────────────────┴───────────────────┘ │
+│ Total Unique Emitters: 54                    │
+├──────────────────────────────────────────────┤ 145 px
+│ RECENT ACTIVITY LOGS                         │
+│ [14:21:05] [BLE]  AirTag nearby (-64 dBm)    │
+│ [14:21:08] [AP]   User joined: 192.168.4.2   │
+│ [14:21:12] [15.4] Zigbee PanID 0x1A2B ch15   │
+│ [14:21:15] [WIFI] New AP: "Lab_Net" (-48dBm) │
+│ [14:21:19] [MAT]  Matter uncommissioned dev  │
+│ [14:21:22] [BLE]  Mijia Temp: 22.8C 45%RH    │
+└──────────────────────────────────────────────┘ 320 px
+```
+
+#### Screen Layout Specifications
+1. **Header Zone ($Y: 0 \rightarrow 48\text{ px}$):**
+   * Dark blue background with bold status text.
+   * Displays SoftAP name, server IP address (`192.168.4.1`), and **live Connected Users count** (`WiFi.softAPgetStationNum()`).
+   * Connected users count turns **Green** when $>0$, and **Grey** when $0$.
+2. **Protocol Breakdown Matrix ($Y: 49 \rightarrow 144\text{ px}$):**
+   * 2×2 grid of distinct colored metric cards:
+     * **Wi-Fi:** Deep Blue badge (`#0066CC`), white count.
+     * **BLE:** Cyan badge (`#0099FF`), white count.
+     * **Zigbee / 802.15.4:** Purple badge (`#7F00FF`), white count.
+     * **Matter:** Amber badge (`#FF9900`), white count.
+   * Summary footer showing total unique RF entities.
+3. **Rolling Log Terminal ($Y: 145 \rightarrow 320\text{ px}$):**
+   * Black terminal background with fixed-width font.
+   * Renders the last 6 events from `lcd_log_ring_buffer`.
+   * Color-coded protocol tags: `[BLE]` in Cyan, `[WIFI]` in Blue, `[15.4]` in Purple, and `[AP]` in Green.
+4. **Display Mode Toggle (Button `GPIO 9`):**
+   * **Short Press:** Toggles between **Standard Dashboard** (above) and **Full Terminal Mode** (displaying 14 lines of continuous historical logs).
+   * **Long Press ($>2\text{s}$):** Toggles display backlight on/off (`GPIO 22`) for power-saving operation.
+
+---
+
+### 3.5 Web Frontend Architecture
 
 * **Payload Packaging:** Single-file HTML5/CSS/JavaScript compressed with GZIP and stored in PROGMEM (Flash memory). Size: $< 45\text{ KB}$ gzipped.
 * **UI Features:**
-  * **Top Metrics Ribbon:** Active protocol breakdown counters (Wi-Fi, BLE, Zigbee, Matter).
+  * **Top Metrics Ribbon:** Active protocol breakdown counters (Wi-Fi, BLE, Zigbee, Matter) and connected web clients.
   * **Interactive Filter Tabs:** Switch between "All", "Wi-Fi", "Bluetooth", and "Zigbee / Matter".
   * **Live Search & Sort:** Filter devices by name or MAC; sort by signal strength (RSSI) or newest detected.
+  * **Live Log Stream:** Real-time log table synchronized with the onboard LCD log buffer.
   * **Manual Trigger Button:** "Force Scan Now" button to execute an immediate RF sweep.
   * **Export Functionality:** One-click download button for `devices.json` and `devices.csv`.
 
@@ -168,9 +233,10 @@ typedef struct {
 | :--- | :--- | :--- | :--- |
 | `/` | `GET` | `text/html` (Gzipped) | Serves the single-page application dashboard. |
 | `/api/devices` | `GET` | `application/json` | Returns array of all discovered devices in memory with timestamps and RSSI. |
-| `/api/stats` | `GET` | `application/json` | System telemetry: Free heap, uptime, Wi-Fi channel, AP clients connected. |
+| `/api/stats` | `GET` | `application/json` | System telemetry: Free heap, uptime, Wi-Fi channel, **connected users count**, and counts per protocol. |
+| `/api/logs` | `GET` | `application/json` | Returns the recent event logs array matching the on-screen LCD log terminal. |
 | `/api/scan` | `POST` | `application/json` | Manually triggers an out-of-order scan for a specified protocol (`wifi`, `ble`, `15.4`). |
-| `/api/clear` | `POST` | `application/json` | Flushes the in-memory discovery cache. |
+| `/api/clear` | `POST` | `application/json` | Flushes the in-memory discovery cache and log buffer. |
 | `/api/export.csv`| `GET` | `text/csv` | Streams the session's discovery log directly from the SD card. |
 
 ---
@@ -189,8 +255,9 @@ esp32-c6-multiscanner/
 │   ├── scanner_ble.h/cpp        # BLE 5.3 Scanner + Beacon/Sensor decoder
 │   ├── scanner_154.h/cpp        # IEEE 802.15.4 & Zigbee energy/beacon sniffer
 │   ├── device_table.h/cpp       # Thread-safe in-memory cache, aging, and deduplication
+│   ├── log_buffer.h/cpp         # Circular log buffer for LCD and REST API
 │   ├── web_server.h/cpp         # Async WebServer, REST endpoints, and static handlers
-│   ├── display_manager.h/cpp    # ST7789 display renderer (with 34 col offset)
+│   ├── display_manager.h/cpp    # ST7789 display renderer (status, counters & rolling log)
 │   ├── led_status.h/cpp         # WS2812 RMT driver and color state machine
 │   └── sd_logger.h/cpp          # Micro-SD SPI file writer and CSV exporter
 ├── data/
@@ -220,10 +287,10 @@ flowchart LR
 ```
 
 * **Milestone 1 (M1) — Foundation:** Implement Wi-Fi SoftAP (`192.168.4.1`), embedded web server, and minimal HTML dashboard skeleton.
-* **Milestone 2 (M2) — Dual Scanner & API:** Add asynchronous Wi-Fi scanning and BLE 5.3 scanner. Implement `/api/devices` JSON response and frontend auto-refresh table.
+* **Milestone 2 (M2) — Dual Scanner & API:** Add asynchronous Wi-Fi scanning and BLE 5.3 scanner. Implement `/api/devices` and `/api/stats` JSON responses and frontend auto-refresh table.
 * **Milestone 3 (M3) — 802.15.4 / Zigbee Engine:** Integrate IEEE 802.15.4 channel energy scanning and beacon parsing. Add Zigbee tab to web UI.
-* **Milestone 4 (M4) — Hardware HUD & Feedback:** Program 1.47" ST7789 screen with live device tally and IP readout; connect WS2812 LED to reflect real-time scan modes.
-* **Milestone 5 (M5) — Storage & Production Hardening:** Add Micro-SD CSV logging, button navigation (`GPIO 9`), memory leak verification, and 48-hour soak testing.
+* **Milestone 4 (M4) — Hardware HUD & Feedback:** Program 1.47" ST7789 screen with live **connected users count, protocol counts matrix, and rolling activity log window**; connect WS2812 LED to reflect real-time scan modes.
+* **Milestone 5 (M5) — Storage & Production Hardening:** Add Micro-SD CSV logging, button display toggle (`GPIO 9`), memory leak verification, and 48-hour soak testing.
 
 ---
 
@@ -237,7 +304,7 @@ flowchart LR
 | **TC-02** | **Wi-Fi Detection** | Place device near 2.4 GHz routers (WPA2, WPA3, Open). | Detects $\ge 90\%$ of local 2.4 GHz APs within 2 scan cycles. |
 | **TC-03** | **BLE Tracking** | Bring an Apple AirTag and a BLE temperature sensor within 5 meters. | Displays MAC/Payload, identifies tag type, and reads temperature in $< 5\text{s}$. |
 | **TC-04** | **Zigbee Detection** | Trigger pairing mode on an IKEA/Tuya Zigbee bulb or sensor. | Captures 802.15.4 beacon request, displays PAN ID and channel on web UI and LCD. |
-| **TC-05** | **Display Rendering** | Boot system and observe 1.47" LCD across orientations. | Text and charts render sharply with no pixel clipping or color inversion (offset = 34). |
+| **TC-05** | **Onboard LCD UX** | 1. Connect and disconnect client phones to the SoftAP.<br>2. Trigger discovery of new BLE/Wi-Fi devices.<br>3. Press User Button (`GPIO 9`). | 1. **Connected Users** count increments/decrements live on LCD.<br>2. **Protocol counters** match `/api/devices` count.<br>3. **Recent logs window** renders new event entries with timestamp and color badge with $< 40\text{ms}$ refresh and zero flicker.<br>4. Button press cleanly toggles between Dashboard HUD and Full Terminal Log views. |
 | **TC-06** | **Memory Soak Test** | Run continuous round-robin scanning for 24 hours under continuous HTTP polling. | Free heap does not degrade below $80\text{ KB}$; zero panic/watchdog resets. |
 | **TC-07** | **SD Card Hot-Plug** | Power on without SD card, insert card mid-run, check `/api/export.csv`. | System does not freeze; logs resume gracefully upon insertion. |
 

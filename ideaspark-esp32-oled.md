@@ -11,7 +11,7 @@ Technical documentation, original manuals/datasheet references, hardware specifi
 
 * **Board Overview & Guides:**
   * [Manuals+ Ideaspark ESP32 0.96-inch OLED User Manual](https://manuals.plus/m/7a82b86c125df93a6bfcfb71e1b12b504ba488d8b99c7198ba16892558f62f3f)
-  * [Manuals+ Ideaspark ESP32 OLED Product Reference (ASIN: B0CN4F354N)](https://manuals.plus/asin/B0CN4F354N)
+  * [Device.report Ideaspark ESP32 OLED Product Reference (ASIN: B0CN4F354N)](https://device.report/asin/B0CN4F354N)
   * [Device.report Ideaspark Hardware Database](https://device.report/ideaspark)
 * **SoC Datasheet & Technical Manuals (Espressif):**
   * [ESP32-WROOM-32 Series Datasheet (PDF)](https://www.espressif.com/sites/default/files/documentation/esp32-wroom-32_datasheet_en.pdf)
@@ -162,3 +162,4 @@ void loop() {
   delay(5000);
 }
 ```
+

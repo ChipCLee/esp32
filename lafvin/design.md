@@ -168,12 +168,38 @@ The ST7789 color display is configured at **$172 \times 320$ pixels** in portrai
 
 ---
 
-### 3.5 Web Frontend & Authentication Architecture
+### 3.5 Web Frontend & Triggerable Operations Architecture
 
+#### 1. Operations Triggered Directly from the Web Dashboard
+The web dashboard is fully interactive. In addition to passive real-time monitoring, users can trigger any scan or maintenance operation on demand via dedicated UI controls:
+
+| Operation | Dashboard UI Element | API Endpoint & Payload | Execution Behavior |
+| :--- | :--- | :--- | :--- |
+| **Full Spectrum Sweep** | `🚀 Scan All` Button | `POST /api/scan` `{"protocol":"all"}` | Executes sequential time-sliced sweep across Wi-Fi (1s), BLE (2s), and 802.15.4 (1.5s). |
+| **Targeted Wi-Fi Scan** | `📶 Scan Wi-Fi` Button | `POST /api/scan` `{"protocol":"wifi"}` | Immediate non-blocking passive/active probe on 2.4 GHz channels 1–13. |
+| **Targeted BLE Scan** | `🔵 Scan BLE` Button | `POST /api/scan` `{"protocol":"ble"}` | 3-second active NimBLE discovery for beacons, AirTags, and sensors. |
+| **Targeted Zigbee Scan** | `⚡ Scan Zigbee` Button | `POST /api/scan` `{"protocol":"zigbee"}` | Sweeps 802.15.4 channels 11–26 for PAN IDs, beacon frames, and energy levels. |
+| **Flush Cache** | `🗑️ Clear Cache` Button | `POST /api/clear` | Flushes the in-memory device table and resets the on-screen LCD log terminal. |
+| **Export Data** | `💾 Export CSV / JSON` | `GET /api/export.csv` | Streams the capture log directly to the user's browser as a downloadable CSV. |
+| **Hardware Controls** | `⚙️ Settings Modal` | `POST /api/config` | Remotely toggles LCD backlight on/off and adjusts auto-scan interval (10s, 30s, 60s, or Manual). |
+
+#### 2. Authentication & Access Control
 * **Mechanism:** HTTP Basic Authentication (`Authorization: Basic <base64>`) enforced across all HTTP routes and REST API endpoints.
 * **Credentials:** Default Username `admin`, Default Password `pw4ggyy!`.
 * **Payload Packaging:** Single-file HTML5/CSS/JavaScript compressed with GZIP and stored in PROGMEM (Flash memory). Size: $< 35\text{ KB}$ gzipped.
-* **REST API Endpoints:** `/api/devices`, `/api/stats`, `/api/logs`, `/api/scan`, `/api/clear`, `/api/export.csv`.
+
+#### 3. Complete REST API Specifications
+
+| Endpoint | Method | Auth Required | Request Payload | Response Format | Purpose |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `/` | `GET` | Yes | None | `text/html` (Gzipped) | Serves the single-page application dashboard. |
+| `/api/devices` | `GET` | Yes | None | `application/json` | Returns array of discovered devices with RSSI and timestamps. |
+| `/api/stats` | `GET` | Yes | None | `application/json` | System telemetry: Free heap, uptime, connected users count, scan counters. |
+| `/api/logs` | `GET` | Yes | None | `application/json` | Returns recent event logs matching the on-screen LCD log terminal. |
+| `/api/scan` | `POST` | Yes | `{"protocol":"all|wifi|ble|zigbee"}` | `application/json` | **Triggers an immediate scan on the selected protocol.** |
+| `/api/config` | `POST` | Yes | `{"auto_scan":bool,"interval_s":int}`| `application/json` | **Configures scan scheduling and remote hardware parameters.** |
+| `/api/clear` | `POST` | Yes | None | `application/json` | **Flushes in-memory discovery cache and log buffer.** |
+| `/api/export.csv`| `GET` | Yes | None | `text/csv` | Streams the session discovery log from the SD card. |
 
 ---
 

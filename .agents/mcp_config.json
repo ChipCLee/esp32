@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "arduino": {
+      "command": "/Users/chengchung.lee/.nvm/versions/node/v22.22.3/bin/arduino-mcp-server",
+      "args": [],
+      "env": {
+        "PATH": "/opt/homebrew/bin:/Users/chengchung.lee/.nvm/versions/node/v22.22.3/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "ARDUINO_CLI_PATH": "/opt/homebrew/bin/arduino-cli"
+      }
+    }
+  }
+}

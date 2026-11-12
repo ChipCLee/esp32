@@ -1,11 +1,15 @@
 # esp32
 
-Technical documentation and code examples for ESP32 development boards.
+Technical documentation, projects, and reference guides for ESP32 development boards.
 
-## Boards Documentation
+## Boards & Project Documentation
 
-- [Ideaspark ESP32 Development Board (0.96" OLED & CH340)](ideaspark-esp32-oled.md)
-- [LAFVIN ESP32-C6 Development Board (1.47" Color LCD, Model LB008)](lafvin-esp32-c6-lcd.md)
+### 1. Ideaspark ESP32 (0.96" OLED & CH340)
+* [Ideaspark ESP32 Reference Guide](ideaspark/ideaspark-esp32-oled.md) — Hardware specs, SSD1306 display pinouts, and Arduino Wi-Fi scanner examples.
+
+### 2. LAFVIN ESP32-C6 (1.47" Color LCD, Model LB008)
+* [LAFVIN ESP32-C6 Reference Guide](lafvin/lafvin-esp32-c6-lcd.md) — Next-gen Wi-Fi 6, BLE 5.3, Zigbee/Thread 802.15.4 specs, ST7789 display setup, and NeoPixel code.
+* [System Design: Multi-Protocol Spectrum Discovery & Web Hub](lafvin/design.md) — Architectural requirements, time-sliced RF coexistence scheduler, embedded web server, deliverables, and validation plan.
 
 ---
 

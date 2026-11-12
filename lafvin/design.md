@@ -8,9 +8,10 @@ The system leverages the ESP32-C6's integrated **2.4 GHz multi-protocol transcei
 
 The device operates entirely without external cloud infrastructure:
 1. It hosts a standalone **Wi-Fi SoftAP** and embedded HTTP web server.
-2. Any client device (smartphone, tablet, laptop) connecting to the access point can navigate to a local dashboard (`http://192.168.4.1`) to inspect, filter, and track nearby RF emitters.
-3. The onboard **1.47" IPS color screen** and **WS2812 RGB LED** provide real-time hardware telemetry, connected user count, protocol breakdown stats, and a live rolling log terminal.
-4. Optional offline captures are written to an onboard **Micro-SD (TF) card**.
+2. The web dashboard and REST APIs are secured with **password authentication** (default password: `pw4ggyy!`).
+3. Any client device (smartphone, tablet, laptop) connecting to the access point can navigate to `http://192.168.4.1`, authenticate, and inspect/filter nearby RF emitters.
+4. The onboard **1.47" IPS color screen** and **WS2812 RGB LED** provide real-time hardware telemetry, connected user count, protocol breakdown stats, and a live rolling log terminal.
+5. Optional offline captures are written to an onboard **Micro-SD (TF) card**.
 
 ---
 
@@ -26,10 +27,11 @@ The device operates entirely without external cloud infrastructure:
 | **FR-4** | **IEEE 802.15.4 / Zigbee Discovery** | Scan channels 11–26 for 802.15.4 energy levels, beacon requests, and active Zigbee/Thread networks. Extract PAN IDs, Extended PAN IDs, channels, and LQI (Link Quality Indication). |
 | **FR-5** | **Matter Uncommissioned Discovery** | Detect BLE Matter Commissioning advertisements (Service UUID `0xFFF6`) and decode Vendor ID (VID), Product ID (PID), and 12-bit device discriminators. |
 | **FR-6** | **Time-Sliced RF Coexistence** | Implement a deterministic FreeRTOS scheduler that shares the single 2.4 GHz RF frontend among Wi-Fi AP transmission, BLE scanning, and 802.15.4 listening without dropping web client sockets. |
-| **FR-7** | **RESTful API & Real-time Updates** | Expose JSON endpoints (`/api/devices`, `/api/stats`, `/api/scan`) with optional Server-Sent Events (SSE) or polling for real-time frontend refreshes. |
+| **FR-7** | **RESTful API & Real-time Updates** | Expose JSON endpoints (`/api/devices`, `/api/stats`, `/api/scan`, `/api/logs`) with optional Server-Sent Events (SSE) or polling for real-time frontend refreshes. |
 | **FR-8** | **Hardware Screen UX (Onboard LCD)** | Render a comprehensive real-time status dashboard on the 1.47" ST7789 IPS LCD (172×320):<br>1. **Connection & System Status:** SoftAP SSID, IP address, and **live count of connected Wi-Fi users** (`WiFi.softAPgetStationNum()`).<br>2. **Protocol Breakdown Counters:** Distinct visual counters for detected **Wi-Fi, BLE, Zigbee/802.15.4, and Matter** devices, plus total unique tally.<br>3. **Recent Activity Logs:** A live rolling log window displaying the latest 5–6 system and discovery events with timestamps and protocol badges.<br>4. **Display Mode Toggle:** Support switching between Split Dashboard view and Full-Screen Event Log view via the User Button (`GPIO 9`). |
 | **FR-9** | **RGB Visual Diagnostics (WS2812)** | Use the onboard addressable LED (`GPIO 8`) to display scan states: Blue (BLE scan), Purple (802.15.4 scan), Green (Wi-Fi AP serving), and Red (error/buffer overflow). |
 | **FR-10** | **Local SD Logging** | Record discovery events and timestamps in CSV format onto the onboard Micro-SD card slot for offline RF site-survey analysis. |
+| **FR-11** | **Dashboard Password Protection** | Require authentication to access the web dashboard (`/`) and all management REST endpoints (`/api/*`).<br>• **Default Username:** `admin`<br>• **Default Password:** `pw4ggyy!`<br>Unauthenticated requests must be rejected with HTTP 401 Unauthorized (via standard HTTP Basic Auth or session login challenge). |
 
 ### 2.2 Non-Functional Requirements (NFR)
 
@@ -38,7 +40,8 @@ The device operates entirely without external cloud infrastructure:
 * **NFR-3 (Coexistence Reliability):** SoftAP beacon loss $< 2\%$ during active BLE and 802.15.4 scan windows.
 * **NFR-4 (Self-Contained & Cloudless):** 100% functionality with zero internet connectivity. All CSS/JS assets bundled in Flash (PROGMEM or LittleFS).
 * **NFR-5 (LCD Refresh Performance):** Screen redraw latency $< 40\text{ ms}$ with partial bounding-box updates to prevent visible display flicker and minimize SPI contention with the SD card.
-* **NFR-6 (Graceful Degradation):** Automatic detection of missing Micro-SD card or LCD failure without blocking wireless scanning.
+* **NFR-6 (Security Boundary):** Password verification performed in constant time to mitigate timing attacks; unauthenticated brute-force attempts rate-limited (5-second lockout after 5 consecutive failures).
+* **NFR-7 (Graceful Degradation):** Automatic detection of missing Micro-SD card or LCD failure without blocking wireless scanning.
 
 ---
 
@@ -54,7 +57,7 @@ flowchart TD
         RADIO[2.4 GHz Multi-Protocol Transceiver]
     end
 
-    RADIO -->|Wi-Fi 6 AP| WEB[Web Browser Clients]
+    RADIO -->|Wi-Fi 6 AP| WEB[Web Browser Clients - Auth: pw4ggyy!]
     RADIO -->|BLE 5.3 Scan| BLE_DEV[Nearby BLE / Trackers / Sensors]
     RADIO -->|802.15.4 Scan| ZB_DEV[Zigbee / Thread Networks]
 
@@ -90,7 +93,7 @@ Because the ESP32-C6 features a **single physical RF frontend**, concurrent oper
 stateDiagram-v2
     [*] --> SoftAP_Idle : System Init Complete
     
-    state "Wi-Fi AP Window (Serve Web Clients)" as SoftAP_Idle
+    state "Wi-Fi AP Window (Serve Auth Web Clients)" as SoftAP_Idle
     state "BLE Scan Window (Active BLE 5.3)" as BLE_Scan
     state "Wi-Fi Spectrum Scan (AP + Background Scan)" as WiFi_Scan
     state "802.15.4 Scan Window (Zigbee / Thread)" as IEEE_Scan
@@ -106,7 +109,7 @@ stateDiagram-v2
     Data_Sync --> SoftAP_Idle : Buffer Cleared
 ```
 
-* **Slot 1 (Wi-Fi AP Master, continuous base):** Maintains 802.11 DTIM beacons and handles incoming HTTP requests from connected phones/PCs.
+* **Slot 1 (Wi-Fi AP Master, continuous base):** Maintains 802.11 DTIM beacons and handles authenticated HTTP requests from connected phones/PCs.
 * **Slot 2 (BLE Scan Window, $\approx 1.5\text{s}$):** Hardware switches to BLE RX. Discovered advertisement payloads are pushed to an in-memory thread-safe queue.
 * **Slot 3 (Wi-Fi Channel Scan, $\approx 1.0\text{s}$):** The Wi-Fi driver issues non-blocking passive/active probe requests on channels 1–13 while preserving the AP connection.
 * **Slot 4 (802.15.4 Sniff Window, $\approx 1.5\text{s}$):** Radio switches to 802.15.4 packet reception to capture Zigbee beacon frames, channel energy (ED), and PAN IDs.
@@ -123,43 +126,12 @@ stateDiagram-v2
                                        │
     ┌────────────────────────┬─────────┴──────────────┬────────────────────────┐
     ▼                        ▼                        ▼                        ▼
-[Task 1: Core Web]       [Task 2: RF Scanner]    [Task 3: Display UX]    [Task 4: Logger]
+[Task 1: Core Web & Auth] [Task 2: RF Scanner]    [Task 3: Display UX]    [Task 4: Logger]
 - Priority: 3            - Priority: 2           - Priority: 1           - Priority: 1
 - Stack: 4 KB            - Stack: 6 KB           - Stack: 3 KB           - Stack: 3 KB
-- Async WebServer        - WiFi / BLE / 15.4     - ST7789 UI Loop        - Micro-SD SPI
+- HTTP Auth Filter       - WiFi / BLE / 15.4     - ST7789 UI Loop        - Micro-SD SPI
 - Static Assets          - Deduplication Table   - WS2812 RMT Control    - Circular buffer
 - REST API Handlers      - Circular Ring Buffer  - Log Stream Renderer   - Flush to CSV
-```
-
-#### In-Memory Device Model & Logging Buffer
-```cpp
-typedef enum {
-    PROTO_WIFI,
-    PROTO_BLE,
-    PROTO_ZIGBEE,
-    PROTO_MATTER
-} rf_protocol_t;
-
-typedef struct {
-    uint8_t mac_or_id[8];     // MAC Address (6 bytes) or Zigbee Extended PanID (8 bytes)
-    char name[33];            // Human readable name (SSID or BLE advertised name)
-    int8_t rssi;              // Received Signal Strength Indicator (dBm)
-    uint8_t channel;          // Channel (1-13 for Wi-Fi, 37-39 for BLE, 11-26 for 802.15.4)
-    rf_protocol_t protocol;   // Protocol category
-    char details[48];         // e.g., "WPA3", "Apple AirTag", "PanID: 0x1A2B", "Temp: 23.4C"
-    uint32_t last_seen_ms;    // millis() timestamp for expiration/aging
-} discovered_device_t;
-
-// On-screen rolling log entry
-typedef struct {
-    uint32_t timestamp_s;    // Seconds since boot
-    rf_protocol_t protocol;  // Associated protocol (for color tagging)
-    char message[38];        // Event string e.g. "AirTag found -62dBm" or "Client 192.168.4.2 joined"
-} lcd_log_entry_t;
-
-#define LCD_LOG_HISTORY_SIZE 8
-extern lcd_log_entry_t lcd_log_ring_buffer[LCD_LOG_HISTORY_SIZE];
-extern uint8_t lcd_log_head;
 ```
 
 ---
@@ -168,13 +140,11 @@ extern uint8_t lcd_log_head;
 
 The ST7789 color display is configured at **$172 \times 320$ pixels** in portrait mode with a **34-pixel column offset**.
 
-The screen layout is divided into three functional zones designed for glanceable telemetry:
-
 ```
 ┌──────────────────────────────────────────────┐ 0 px
 │  ESP32-C6 SPECTRUM HUB         [STATE: IDLE] │
 │  SSID: ESP32-C6-Scanner        IP: 192.168.4.1│
-│  Connected Users: 2 👥         Uptime: 01h24m │
+│  Connected Users: 2 👥         Auth: ACTIVE 🔒│
 ├──────────────────────────────────────────────┤ 50 px
 │ DETECTED DEVICES BREAKDOWN                   │
 │ ┌──────────────────────┬───────────────────┐ │
@@ -186,7 +156,7 @@ The screen layout is divided into three functional zones designed for glanceable
 ├──────────────────────────────────────────────┤ 145 px
 │ RECENT ACTIVITY LOGS                         │
 │ [14:21:05] [BLE]  AirTag nearby (-64 dBm)    │
-│ [14:21:08] [AP]   User joined: 192.168.4.2   │
+│ [14:21:08] [AP]   User auth OK: 192.168.4.2  │
 │ [14:21:12] [15.4] Zigbee PanID 0x1A2B ch15   │
 │ [14:21:15] [WIFI] New AP: "Lab_Net" (-48dBm) │
 │ [14:21:19] [MAT]  Matter uncommissioned dev  │
@@ -196,42 +166,48 @@ The screen layout is divided into three functional zones designed for glanceable
 
 #### Screen Layout Specifications
 1. **Header Zone ($Y: 0 \rightarrow 48\text{ px}$):**
-   * Dark blue background with bold status text.
-   * Displays SoftAP name, server IP address (`192.168.4.1`), and **live Connected Users count** (`WiFi.softAPgetStationNum()`).
-   * Connected users count turns **Green** when $>0$, and **Grey** when $0$.
+   * Displays SoftAP name, server IP address (`192.168.4.1`), **live Connected Users count** (`WiFi.softAPgetStationNum()`), and Lock status (`🔒`).
 2. **Protocol Breakdown Matrix ($Y: 49 \rightarrow 144\text{ px}$):**
-   * 2×2 grid of distinct colored metric cards:
-     * **Wi-Fi:** Deep Blue badge (`#0066CC`), white count.
-     * **BLE:** Cyan badge (`#0099FF`), white count.
-     * **Zigbee / 802.15.4:** Purple badge (`#7F00FF`), white count.
-     * **Matter:** Amber badge (`#FF9900`), white count.
-   * Summary footer showing total unique RF entities.
+   * 2×2 grid of colored metric cards: **Wi-Fi** (Blue), **BLE** (Cyan), **Zigbee** (Purple), and **Matter** (Amber).
 3. **Rolling Log Terminal ($Y: 145 \rightarrow 320\text{ px}$):**
-   * Black terminal background with fixed-width font.
-   * Renders the last 6 events from `lcd_log_ring_buffer`.
-   * Color-coded protocol tags: `[BLE]` in Cyan, `[WIFI]` in Blue, `[15.4]` in Purple, and `[AP]` in Green.
+   * Renders the last 6 events from `lcd_log_ring_buffer` including successful/failed authentication events (`[AP] User auth OK / Failed`).
 4. **Display Mode Toggle (Button `GPIO 9`):**
-   * **Short Press:** Toggles between **Standard Dashboard** (above) and **Full Terminal Mode** (displaying 14 lines of continuous historical logs).
-   * **Long Press ($>2\text{s}$):** Toggles display backlight on/off (`GPIO 22`) for power-saving operation.
+   * **Short Press:** Toggles between **Standard Dashboard** and **Full Terminal Mode** (14 lines of continuous historical logs).
+   * **Long Press ($>2\text{s}$):** Toggles display backlight on/off (`GPIO 22`).
 
 ---
 
-### 3.5 Web Frontend Architecture
+### 3.5 Web Frontend & Authentication Architecture
 
-* **Payload Packaging:** Single-file HTML5/CSS/JavaScript compressed with GZIP and stored in PROGMEM (Flash memory). Size: $< 45\text{ KB}$ gzipped.
-* **UI Features:**
-  * **Top Metrics Ribbon:** Active protocol breakdown counters (Wi-Fi, BLE, Zigbee, Matter) and connected web clients.
-  * **Interactive Filter Tabs:** Switch between "All", "Wi-Fi", "Bluetooth", and "Zigbee / Matter".
-  * **Live Search & Sort:** Filter devices by name or MAC; sort by signal strength (RSSI) or newest detected.
-  * **Live Log Stream:** Real-time log table synchronized with the onboard LCD log buffer.
-  * **Manual Trigger Button:** "Force Scan Now" button to execute an immediate RF sweep.
-  * **Export Functionality:** One-click download button for `devices.json` and `devices.csv`.
+#### Access Control & Security Specification
+* **Mechanism:** HTTP Basic Authentication (`Authorization: Basic <base64>`) enforced across all HTTP routes and REST API endpoints.
+* **Credentials:**
+  * **Username:** `admin`
+  * **Default Password:** `pw4ggyy!`
+* **Implementation Pattern in `ESPAsyncWebServer`:**
+  ```cpp
+  const char* http_username = "admin";
+  const char* http_password = "pw4ggyy!"; // Default password
 
-#### REST API Endpoints
+  bool check_auth(AsyncWebServerRequest *request) {
+      if (!request->authenticate(http_username, http_password)) {
+          request->requestAuthentication("ESP32-C6 Scanner Web Hub");
+          return false;
+      }
+      return true;
+  }
+  ```
+* **Security Behavior:**
+  * Unauthenticated requests receive `HTTP 401 Unauthorized` with header `WWW-Authenticate: Basic realm="ESP32-C6 Scanner Web Hub"`.
+  * The browser automatically prompts the user with a native, secure login modal.
+  * Once authenticated, credentials are cached by the browser session for all subsequent REST calls (`/api/devices`, `/api/stats`, `/api/logs`).
+  * Unauthorized REST queries receive `{ "error": "Unauthorized", "code": 401 }`.
+
+#### REST API Endpoints (All Protected)
 
 | Endpoint | Method | Response Format | Purpose |
 | :--- | :--- | :--- | :--- |
-| `/` | `GET` | `text/html` (Gzipped) | Serves the single-page application dashboard. |
+| `/` | `GET` | `text/html` (Gzipped) | Serves the single-page application dashboard (requires auth). |
 | `/api/devices` | `GET` | `application/json` | Returns array of all discovered devices in memory with timestamps and RSSI. |
 | `/api/stats` | `GET` | `application/json` | System telemetry: Free heap, uptime, Wi-Fi channel, **connected users count**, and counts per protocol. |
 | `/api/logs` | `GET` | `application/json` | Returns the recent event logs array matching the on-screen LCD log terminal. |
@@ -256,7 +232,8 @@ esp32-c6-multiscanner/
 │   ├── scanner_154.h/cpp        # IEEE 802.15.4 & Zigbee energy/beacon sniffer
 │   ├── device_table.h/cpp       # Thread-safe in-memory cache, aging, and deduplication
 │   ├── log_buffer.h/cpp         # Circular log buffer for LCD and REST API
-│   ├── web_server.h/cpp         # Async WebServer, REST endpoints, and static handlers
+│   ├── auth_config.h            # Default credentials ("admin", "pw4ggyy!") & NVS handler
+│   ├── web_server.h/cpp         # Async WebServer with HTTP Basic Auth filter
 │   ├── display_manager.h/cpp    # ST7789 display renderer (status, counters & rolling log)
 │   ├── led_status.h/cpp         # WS2812 RMT driver and color state machine
 │   └── sd_logger.h/cpp          # Micro-SD SPI file writer and CSV exporter
@@ -269,7 +246,7 @@ esp32-c6-multiscanner/
 ### 4.2 Key Software Libraries
 
 1. **`Arduino_GFX_Library` (Moon On Our Nation):** Optimized ST7789 display driver with custom offset handling.
-2. **`ESPAsyncWebServer` + `AsyncTCP`:** High-performance asynchronous HTTP engine that handles client connections without stalling background RF tasks.
+2. **`ESPAsyncWebServer` + `AsyncTCP`:** High-performance asynchronous HTTP engine that handles client connections and Basic Auth without stalling background RF tasks.
 3. **`ArduinoJson` (v7):** Zero-allocation JSON serialization for REST API responses.
 4. **`Adafruit_NeoPixel`:** Simple, reliable control for the onboard WS2812 RGB LED (`GPIO 8`).
 5. **`esp_zb_` & `esp_ieee802154_` (ESP-IDF / Arduino ESP32 core):** Low-level driver access for 802.15.4 frame reception.
@@ -280,13 +257,13 @@ esp32-c6-multiscanner/
 
 ```mermaid
 flowchart LR
-    M1["M1: Web Core<br>SoftAP + Web UI"] --> M2["M2: Dual Scanner<br>Wi-Fi + BLE Engine"]
+    M1["M1: Web Core<br>SoftAP + Auth + Web UI"] --> M2["M2: Dual Scanner<br>Wi-Fi + BLE Engine"]
     M2 --> M3["M3: 802.15.4<br>Zigbee/Thread Sniffer"]
     M3 --> M4["M4: Hardware UX<br>ST7789 LCD + WS2812"]
-    M4 --> M5["M5: Integration<br>SD Logging + Stress Test"]
+    M4 --> M5["M5: Integration<br>SD Logging + Security Soak"]
 ```
 
-* **Milestone 1 (M1) — Foundation:** Implement Wi-Fi SoftAP (`192.168.4.1`), embedded web server, and minimal HTML dashboard skeleton.
+* **Milestone 1 (M1) — Foundation & Security:** Implement Wi-Fi SoftAP (`192.168.4.1`), HTTP Basic Auth filter (`admin:pw4ggyy!`), and minimal authenticated HTML dashboard.
 * **Milestone 2 (M2) — Dual Scanner & API:** Add asynchronous Wi-Fi scanning and BLE 5.3 scanner. Implement `/api/devices` and `/api/stats` JSON responses and frontend auto-refresh table.
 * **Milestone 3 (M3) — 802.15.4 / Zigbee Engine:** Integrate IEEE 802.15.4 channel energy scanning and beacon parsing. Add Zigbee tab to web UI.
 * **Milestone 4 (M4) — Hardware HUD & Feedback:** Program 1.47" ST7789 screen with live **connected users count, protocol counts matrix, and rolling activity log window**; connect WS2812 LED to reflect real-time scan modes.
@@ -307,6 +284,7 @@ flowchart LR
 | **TC-05** | **Onboard LCD UX** | 1. Connect and disconnect client phones to the SoftAP.<br>2. Trigger discovery of new BLE/Wi-Fi devices.<br>3. Press User Button (`GPIO 9`). | 1. **Connected Users** count increments/decrements live on LCD.<br>2. **Protocol counters** match `/api/devices` count.<br>3. **Recent logs window** renders new event entries with timestamp and color badge with $< 40\text{ms}$ refresh and zero flicker.<br>4. Button press cleanly toggles between Dashboard HUD and Full Terminal Log views. |
 | **TC-06** | **Memory Soak Test** | Run continuous round-robin scanning for 24 hours under continuous HTTP polling. | Free heap does not degrade below $80\text{ KB}$; zero panic/watchdog resets. |
 | **TC-07** | **SD Card Hot-Plug** | Power on without SD card, insert card mid-run, check `/api/export.csv`. | System does not freeze; logs resume gracefully upon insertion. |
+| **TC-08** | **Dashboard Authentication** | 1. Connect to SoftAP and open `http://192.168.4.1` without entering password.<br>2. Enter incorrect password.<br>3. Enter default credentials (`admin` / `pw4ggyy!`).<br>4. Attempt curl to `/api/devices` with/without Basic Auth header. | 1. Browser prompts with HTTP 401 Basic Auth dialog.<br>2. Re-prompts on incorrect credentials; REST calls return 401.<br>3. Correct password `pw4ggyy!` grants full dashboard access.<br>4. Failed attempts trigger log entry on LCD: `[AP] Auth failed: <IP>`. |
 
 ### 6.2 Sign-off Criteria
-The project will be deemed complete when **TC-01 through TC-07** pass unconditionally on the physical LAFVIN ESP32-C6 (LB008) hardware module.
+The project will be deemed complete when **TC-01 through TC-08** pass unconditionally on the physical LAFVIN ESP32-C6 (LB008) hardware module.

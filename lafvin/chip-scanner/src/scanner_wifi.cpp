@@ -2,6 +2,7 @@
 #include "auth_config.h"
 #include "device_table.h"
 #include "log_buffer.h"
+#include "rf_scheduler.h"
 #include <WiFi.h>
 #include <esp_wifi.h>
 
@@ -108,8 +109,10 @@ void scanner_wifi_scan_step(uint8_t start_channel, uint8_t num_channels) {
 void scanner_wifi_full_sweep() {
     // Channel-interleaved scan across channels 1..13 (2 channels per burst + 100ms SoftAP recovery)
     for (uint8_t ch = 1; ch <= 13; ch += 2) {
+        if (rf_scheduler_is_gatt_requested()) break;
         uint8_t count = (ch == 13) ? 1 : 2;
         scanner_wifi_scan_step(ch, count);
+        if (rf_scheduler_is_gatt_requested()) break;
         // 100ms Home-Channel Recovery Window so connected web browsers never drop DTIM beacons
         vTaskDelay(pdMS_TO_TICKS(100));
     }

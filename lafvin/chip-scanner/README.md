@@ -7,7 +7,7 @@ Firmware implementation of [design.md](design.md) for the **LAFVIN ESP32-C6 Deve
 - **Password-Protected Web Dashboard**: HTTP Basic Authentication (`admin` / `pw4ggyy!`) with constant-time credential verification and a 5-failure / 5-second brute-force lockout (`NFR-7`).
 - **Time-Sliced Multi-Protocol RF Discovery**:
   - **Wi-Fi 4 / Wi-Fi 6 (802.11 b/g/n/ax)**: Channel-interleaved micro-scans (`<= 90ms` off-channel + `100ms` SoftAP home-channel recovery) across channels 1–13.
-  - **BLE 5.3 (`NimBLE-Arduino`)**: Active scanning with manufacturer/service payload decoding for **Apple AirTag / FindMy (`0x004C`)**, **Samsung SmartTag (`0xFD5A`/`0x0075`)**, **Tile (`0xFEED`/`0xFEEC`)**, **Xiaomi Mijia (`0x181A`)**, and **Govee (`0xEC88`)**.
+  - **BLE 5.3 (`NimBLE-Arduino`)**: Active scanning with manufacturer/service payload decoding for **Apple AirTag / FindMy (`0x004C`)**, **Samsung SmartTag (`0xFD5A`/`0x0075`)**, **Tile (`0xFEED`/`0xFEEC`)**, **Xiaomi Mijia (`0x181A`)**, and **Govee (`0xEC88`)**, plus an interactive **BLE GATT Explorer & Characteristic Reader** ([ble.md](ble.md)) to connect, enumerate GATT Services/Characteristics, and read characteristic values (Hex, UTF-8, and decoded Bluetooth SIG values).
   - **Matter BLE (`0xFFF6`)**: Extracts uncommissioned Matter device `Vendor ID (VID)`, `Product ID (PID)`, and 12-bit `Discriminator`.
   - **IEEE 802.15.4 / Zigbee / Thread**: Native `esp_ieee802154` driver with `esp_coex_wifi_i154_enable()` transmitting active Beacon Requests (`0x07`) and promiscuous MAC frame inspection across channels 11–26.
 - **1.47" ST7789 Color LCD HUD (`172 × 320`)**:
@@ -71,7 +71,7 @@ pio run --target upload
 ---
 
 ## Verified Resource Footprint (ESP32-C6)
-- **Flash Usage**: `1,558,314 bytes` (`45.7%` of `3,407,872 bytes` `app0` partition)
-- **Static SRAM Usage**: `86,220 bytes` (`26.3%` of `327,680 bytes`, leaving **`241,460 bytes` free** for heap/stacks)
-- **Embedded Web UI (`index.html.gz`)**: `5,350 bytes` (`PROGMEM`, compressed from `17,875 bytes`)
+- **Flash Usage**: `1,586,504 bytes` (`46.5%` of `3,407,872 bytes` `app0` partition)
+- **Static SRAM Usage**: `91,060 bytes` (`27.8%` of `327,680 bytes`, leaving **`236,620 bytes` free** for heap/stacks)
+- **Embedded Web UI (`index.html.gz`)**: `10,162 bytes` (`PROGMEM`, compressed from `37,563 bytes`)
 

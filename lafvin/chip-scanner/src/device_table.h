@@ -20,7 +20,19 @@ bool device_table_upsert(rf_protocol_t protocol,
                          const char* name,
                          int8_t rssi,
                          uint8_t channel,
-                         const char* details);
+                         const char* details,
+                         uint8_t ble_addr_type = 0,
+                         bool ble_connectable = false);
+
+// Look up a discovered BLE or Matter device by 6-byte MAC address
+bool device_table_lookup_ble(const uint8_t mac[6],
+                             uint8_t* out_addr_type,
+                             bool* out_connectable,
+                             char* out_name,
+                             size_t name_len);
+
+// Parse "AA:BB:CC:DD:EE:FF" into 6-byte MAC array
+bool parse_mac_str(const char* mac_str, uint8_t out_mac[6]);
 
 protocol_counts_t device_table_get_counts();
 size_t device_table_snapshot(discovered_device_t* out_array, size_t max_items);

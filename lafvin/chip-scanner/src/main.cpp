@@ -58,7 +58,7 @@ void setup() {
     web_server_init();
 
     // 7. Launch FreeRTOS Tasks (ESP32-C6 single-core RISC-V @ 160MHz)
-    xTaskCreate(web_server_task,      "web_srv",   6144, nullptr, 4, nullptr);
+    xTaskCreate(web_server_task,      "web_srv",   8192, nullptr, 4, nullptr);
     xTaskCreate(rf_scheduler_task,    "rf_sched",  8192, nullptr, 3, nullptr);
     xTaskCreate(display_manager_task, "lcd_mgr",   4096, nullptr, 2, nullptr);
     xTaskCreate(sd_logger_task,       "sd_log",    4096, nullptr, 1, nullptr);

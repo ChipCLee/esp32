@@ -37,15 +37,16 @@ typedef enum : uint8_t {
 } rf_protocol_t;
 
 typedef enum : uint8_t {
-    SCAN_STATE_IDLE   = 0,
-    SCAN_STATE_WIFI   = 1,
-    SCAN_STATE_BLE    = 2,
-    SCAN_STATE_ZIGBEE = 3,
-    SCAN_STATE_ALL    = 4
+    SCAN_STATE_IDLE     = 0,
+    SCAN_STATE_WIFI     = 1,
+    SCAN_STATE_BLE      = 2,
+    SCAN_STATE_ZIGBEE   = 3,
+    SCAN_STATE_ALL      = 4,
+    SCAN_STATE_BLE_GATT = 5
 } scan_state_t;
 
 // ============================================================================
-// Core In-Memory Data Models (Section 3.3)
+// Core In-Memory Data Models (Section 3.3 & ble.md Section 3.2)
 // ============================================================================
 typedef struct {
     uint8_t mac_or_id[8];     // 6-byte MAC Address or 8-byte IEEE 802.15.4 Extended PAN ID
@@ -53,9 +54,11 @@ typedef struct {
     int8_t rssi;              // Received Signal Strength Indicator (dBm)
     uint8_t channel;          // 1-13 (Wi-Fi), 37-39 (BLE), 11-26 (802.15.4)
     rf_protocol_t protocol;   // Protocol category
+    uint8_t ble_addr_type;    // BLE_ADDR_PUBLIC (0), BLE_ADDR_RANDOM (1), etc.
+    bool ble_connectable;     // True if BLE advertisement is connectable
     char details[44];         // e.g., "WPA3 | Wi-Fi 6", "AirTag", "LQI:195", "VID:0x1234"
     uint32_t last_seen_ms;    // millis() timestamp for aging/eviction
-} discovered_device_t;        // 88 bytes per record
+} discovered_device_t;        // 92 bytes per record
 
 typedef struct {
     uint32_t timestamp_s;     // Unix epoch (if browser-synced) or boot uptime seconds

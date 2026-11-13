@@ -38,7 +38,7 @@ header {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 16px 20px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 .title-group h1 { font-size: 1.35rem; font-weight: 700; display: flex; align-items: center; gap: 10px; }
 .title-group p { font-size: 0.85rem; color: var(--muted); }
@@ -58,6 +58,37 @@ header {
 }
 .sys-meta { display: flex; flex-wrap: wrap; gap: 16px; font-size: 0.85rem; color: var(--muted); }
 .sys-meta strong { color: var(--text); }
+
+/* Top-Level View Navigation */
+.page-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.nav-tab {
+  padding: 10px 18px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.15s ease;
+}
+.nav-tab:hover { color: var(--text); border-color: #475569; }
+.nav-tab.active {
+  background: linear-gradient(135deg, #0284c7, #0066cc);
+  color: #fff;
+  border-color: #38bdf8;
+  box-shadow: 0 2px 10px rgba(2, 132, 199, 0.3);
+}
+.page-view { display: none; }
+.page-view.active { display: block; }
 
 /* Metrics Ribbon */
 .metrics-grid {
@@ -116,11 +147,13 @@ button, .btn {
   align-items: center;
   gap: 6px;
 }
-button:hover, .btn:hover { filter: brightness(1.2); border-color: #475569; }
+button:hover:not(:disabled), .btn:hover { filter: brightness(1.2); border-color: #475569; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
 button.primary { background: var(--wifi); border-color: #2563eb; }
 button.ble-btn { background: #0284c7; border-color: #38bdf8; }
 button.zb-btn { background: #6d28d9; border-color: #a78bfa; }
 button.danger { background: rgba(239, 68, 68, 0.18); color: #fca5a5; border-color: rgba(239, 68, 68, 0.4); }
+button.sm-btn { padding: 4px 9px; font-size: 0.76rem; border-radius: 6px; }
 
 /* Filter & Search Bar */
 .filter-bar {
@@ -147,15 +180,15 @@ button.danger { background: rgba(239, 68, 68, 0.18); color: #fca5a5; border-colo
   border-color: var(--text);
   font-weight: 700;
 }
-.search-input {
-  background: var(--panel);
+.search-input, .text-input {
+  background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
-  padding: 8px 14px;
+  padding: 8px 12px;
   border-radius: 8px;
-  min-width: 250px;
   font-size: 0.85rem;
 }
+.search-input { background: var(--panel); min-width: 250px; }
 
 /* Main Content Grid */
 .content-split {
@@ -171,6 +204,7 @@ button.danger { background: rgba(239, 68, 68, 0.18); color: #fca5a5; border-colo
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
+  margin-bottom: 16px;
 }
 .card-header {
   padding: 12px 16px;
@@ -180,6 +214,8 @@ button.danger { background: rgba(239, 68, 68, 0.18); color: #fca5a5; border-colo
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .table-wrap { overflow-x: auto; max-height: 500px; overflow-y: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
@@ -205,8 +241,21 @@ tr:hover { background: rgba(255, 255, 255, 0.03); }
 .badge.WIFI { background: var(--wifi); }
 .badge.BLE { background: var(--ble); }
 .badge.ZIGBEE, .badge.\31 5\.4 { background: var(--zigbee); }
-.badge.MAT { background: var(--matter); color: #000; }
-.badge.AP { background: var(--green); }
+.badge.MAT, .badge.MATTER { background: var(--matter); color: #000; }
+.badge.AP, .badge.SYS { background: var(--green); }
+.prop-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  margin-right: 4px;
+}
+.prop-badge.read { background: rgba(16, 185, 129, 0.18); color: #34d399; border-color: rgba(16, 185, 129, 0.4); }
+.prop-badge.write { background: rgba(245, 158, 11, 0.18); color: #fbbf24; border-color: rgba(245, 158, 11, 0.4); }
 
 .rssi-bar {
   display: inline-flex;
@@ -215,6 +264,77 @@ tr:hover { background: rgba(255, 255, 255, 0.03); }
   font-family: monospace;
 }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
+
+/* BLE GATT Explorer Styles */
+.ble-selector-grid {
+  display: grid;
+  grid-template-columns: 1fr 200px 150px;
+  gap: 12px;
+  padding: 16px;
+  align-items: end;
+}
+@media (max-width: 820px) {
+  .ble-selector-grid { grid-template-columns: 1fr; }
+}
+.field-group { display: flex; flex-direction: column; gap: 6px; }
+.field-group label { font-size: 0.78rem; color: var(--muted); font-weight: 600; text-transform: uppercase; }
+.ble-conn-banner {
+  margin: 0 16px 16px 16px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 0.84rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ble-conn-banner.connected {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #a7f3d0;
+}
+.ble-conn-banner.error {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #fca5a5;
+}
+.svc-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 12px 16px;
+  background: var(--bg);
+  overflow: hidden;
+}
+.svc-header {
+  background: var(--panel-alt);
+  padding: 10px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.char-val-box {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid #334155;
+  font-size: 0.8rem;
+  display: none;
+}
+.char-val-box.visible { display: block; }
+.char-val-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  align-items: baseline;
+}
+.char-val-key { color: var(--muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; }
 
 /* Activity Log Console */
 .log-console {
@@ -261,8 +381,9 @@ select, input[type="number"] {
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
-  padding: 6px 10px;
-  border-radius: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 0.85rem;
 }
 </style>
 </head>
@@ -284,87 +405,152 @@ select, input[type="number"] {
     </div>
   </header>
 
-  <div class="metrics-grid">
-    <div class="metric-card users">
-      <div class="metric-label">Connected Users 👥</div>
-      <div class="metric-val" id="cntUsers">0</div>
+  <!-- Top-Level Page Navigation (BLE-FR-1) -->
+  <div class="page-nav">
+    <div class="nav-tab active" id="navDashboard" onclick="switchPage('dashboard')">
+      📡 Spectrum Dashboard
     </div>
-    <div class="metric-card wifi">
-      <div class="metric-label">📶 Wi-Fi 6 / APs</div>
-      <div class="metric-val" id="cntWifi">0</div>
-    </div>
-    <div class="metric-card ble">
-      <div class="metric-label">🔵 BLE 5.3 Nodes</div>
-      <div class="metric-val" id="cntBle">0</div>
-    </div>
-    <div class="metric-card zigbee">
-      <div class="metric-label">⚡ Zigbee / 802.15.4</div>
-      <div class="metric-val" id="cntZigbee">0</div>
-    </div>
-    <div class="metric-card matter">
-      <div class="metric-label">🌐 Matter Devices</div>
-      <div class="metric-val" id="cntMatter">0</div>
+    <div class="nav-tab" id="navBleExplorer" onclick="switchPage('ble')">
+      🔵 BLE GATT Explorer &amp; Reader
     </div>
   </div>
 
-  <div class="toolbar">
-    <div class="btn-group">
-      <button class="primary" onclick="triggerScan('all')">🚀 Scan All</button>
-      <button onclick="triggerScan('wifi')">📶 Scan Wi-Fi</button>
-      <button class="ble-btn" onclick="triggerScan('ble')">🔵 Scan BLE</button>
-      <button class="zb-btn" onclick="triggerScan('zigbee')">⚡ Scan Zigbee / 15.4</button>
+  <!-- PAGE 1: SPECTRUM DASHBOARD -->
+  <div id="viewDashboard" class="page-view active">
+    <div class="metrics-grid">
+      <div class="metric-card users">
+        <div class="metric-label">Connected Users 👥</div>
+        <div class="metric-val" id="cntUsers">0</div>
+      </div>
+      <div class="metric-card wifi">
+        <div class="metric-label">📶 Wi-Fi 6 / APs</div>
+        <div class="metric-val" id="cntWifi">0</div>
+      </div>
+      <div class="metric-card ble">
+        <div class="metric-label">🔵 BLE 5.3 Nodes</div>
+        <div class="metric-val" id="cntBle">0</div>
+      </div>
+      <div class="metric-card zigbee">
+        <div class="metric-label">⚡ Zigbee / 802.15.4</div>
+        <div class="metric-val" id="cntZigbee">0</div>
+      </div>
+      <div class="metric-card matter">
+        <div class="metric-label">🌐 Matter Devices</div>
+        <div class="metric-val" id="cntMatter">0</div>
+      </div>
     </div>
-    <div class="btn-group">
-      <a class="btn" href="/api/export.csv" download="discovery.csv">💾 Export CSV</a>
-      <button onclick="exportJson()">💾 Export JSON</button>
-      <button onclick="openSettings()">⚙️ Settings</button>
-      <button class="danger" onclick="clearCache()">🗑️ Clear Cache</button>
+
+    <div class="toolbar">
+      <div class="btn-group">
+        <button class="primary" onclick="triggerScan('all')">🚀 Scan All</button>
+        <button onclick="triggerScan('wifi')">📶 Scan Wi-Fi</button>
+        <button class="ble-btn" onclick="triggerScan('ble')">🔵 Scan BLE</button>
+        <button class="zb-btn" onclick="triggerScan('zigbee')">⚡ Scan Zigbee / 15.4</button>
+      </div>
+      <div class="btn-group">
+        <a class="btn" href="/api/export.csv" download="discovery.csv">💾 Export CSV</a>
+        <button onclick="exportJson()">💾 Export JSON</button>
+        <button onclick="openSettings()">⚙️ Settings</button>
+        <button class="danger" onclick="clearCache()">🗑️ Clear Cache</button>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <div class="tabs">
+        <div class="tab active" onclick="setFilter('ALL', this)">All Protocols (<span id="cntTotal">0</span>)</div>
+        <div class="tab" onclick="setFilter('WIFI', this)">Wi-Fi</div>
+        <div class="tab" onclick="setFilter('BLE', this)">BLE 5.3</div>
+        <div class="tab" onclick="setFilter('15.4', this)">Zigbee / 15.4</div>
+        <div class="tab" onclick="setFilter('MAT', this)">Matter</div>
+      </div>
+      <input type="text" id="searchInput" class="search-input" placeholder="Search SSID, Name, MAC, PAN ID, Sensor..." oninput="renderTable()">
+    </div>
+
+    <div class="content-split">
+      <div class="card-panel">
+        <div class="card-header">
+          <span>Discovered RF Emitters</span>
+          <span style="font-size:0.78rem;color:var(--muted)" id="tableSubStatus">Auto-refreshing every 2s</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th onclick="setSort('proto')">Protocol</th>
+                <th onclick="setSort('name')">Name / SSID / PAN</th>
+                <th onclick="setSort('id')">MAC / Extended ID</th>
+                <th onclick="setSort('ch')">Ch</th>
+                <th onclick="setSort('rssi')">RSSI (dBm) ▼</th>
+                <th>Fingerprint / Details</th>
+                <th onclick="setSort('age')">Seen</th>
+              </tr>
+            </thead>
+            <tbody id="deviceTableBody">
+              <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px;">Scanning spectrum...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card-panel">
+        <div class="card-header">
+          <span>Onboard LCD Activity Log Mirror</span>
+          <span style="font-size:0.75rem;color:var(--green)">LIVE</span>
+        </div>
+        <div class="log-console" id="logConsole"></div>
+      </div>
     </div>
   </div>
 
-  <div class="filter-bar">
-    <div class="tabs">
-      <div class="tab active" onclick="setFilter('ALL', this)">All Protocols (<span id="cntTotal">0</span>)</div>
-      <div class="tab" onclick="setFilter('WIFI', this)">Wi-Fi</div>
-      <div class="tab" onclick="setFilter('BLE', this)">BLE 5.3</div>
-      <div class="tab" onclick="setFilter('15.4', this)">Zigbee / 15.4</div>
-      <div class="tab" onclick="setFilter('MAT', this)">Matter</div>
-    </div>
-    <input type="text" id="searchInput" class="search-input" placeholder="Search SSID, Name, MAC, PAN ID, Sensor..." oninput="renderTable()">
-  </div>
-
-  <div class="content-split">
+  <!-- PAGE 2: BLE GATT EXPLORER & CHARACTERISTIC READER -->
+  <div id="viewBleExplorer" class="page-view">
     <div class="card-panel">
       <div class="card-header">
-        <span>Discovered RF Emitters</span>
-        <span style="font-size:0.78rem;color:var(--muted)" id="tableSubStatus">Auto-refreshing every 2s</span>
+        <span>🔵 Select BLE Peripheral for GATT Service &amp; Characteristic Discovery</span>
+        <span style="font-size:0.78rem;color:var(--muted)">NimBLE 5.3 Central Inspector</span>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th onclick="setSort('proto')">Protocol</th>
-              <th onclick="setSort('name')">Name / SSID / PAN</th>
-              <th onclick="setSort('id')">MAC / Extended ID</th>
-              <th onclick="setSort('ch')">Ch</th>
-              <th onclick="setSort('rssi')">RSSI (dBm) ▼</th>
-              <th>Fingerprint / Details</th>
-              <th onclick="setSort('age')">Seen</th>
-            </tr>
-          </thead>
-          <tbody id="deviceTableBody">
-            <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px;">Scanning spectrum...</td></tr>
-          </tbody>
-        </table>
+      <div class="ble-selector-grid">
+        <div class="field-group">
+          <label for="bleDeviceSelect">Discovered BLE / Matter Peripherals</label>
+          <select id="bleDeviceSelect" onchange="onBleSelectChange()">
+            <option value="">-- Select a discovered BLE device --</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label for="bleTargetMac">Target BLE MAC Address</label>
+          <input type="text" id="bleTargetMac" class="text-input mono" placeholder="AA:BB:CC:DD:EE:FF">
+        </div>
+        <div class="field-group">
+          <label for="bleAddrType">BLE Address Type</label>
+          <select id="bleAddrType">
+            <option value="-1">Auto / Cached</option>
+            <option value="0">Public (0)</option>
+            <option value="1">Random (1)</option>
+          </select>
+        </div>
+      </div>
+      <div style="padding: 0 16px 14px 16px; display:flex; flex-wrap:wrap; gap:8px;">
+        <button class="ble-btn" id="btnDiscoverGatt" onclick="discoverBleGatt()">🔌 Discover Services &amp; Characteristics</button>
+        <button class="primary" id="btnReadAllGatt" onclick="readAllReadableChars()" disabled>📖 Read All Readable</button>
+        <button onclick="triggerScan('ble')">🔄 Rescan BLE Devices</button>
+        <button class="danger" id="btnDisconnectGatt" onclick="disconnectBleGatt()">❌ Disconnect</button>
+      </div>
+      <div class="ble-conn-banner" id="bleConnBanner">
+        <span id="bleConnText">⚪ Idle — Select a connectable BLE device above and click "Discover Services &amp; Characteristics".</span>
+        <span class="mono" id="bleConnMeta"></span>
       </div>
     </div>
 
     <div class="card-panel">
       <div class="card-header">
-        <span>Onboard LCD Activity Log Mirror</span>
-        <span style="font-size:0.75rem;color:var(--green)">LIVE</span>
+        <span id="gattTreeTitle">Discovered GATT Services &amp; Characteristics</span>
+        <span style="font-size:0.78rem;color:var(--muted)" id="gattTreeSummary">No device inspected yet</span>
       </div>
-      <div class="log-console" id="logConsole"></div>
+      <div id="gattServicesContainer" style="padding: 8px 0;">
+        <div style="text-align:center;color:var(--muted);padding:32px 16px;">
+          Select a BLE device and click <strong>"🔌 Discover Services &amp; Characteristics"</strong> to enumerate its GATT profile and read characteristics.
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -372,7 +558,7 @@ select, input[type="number"] {
 <!-- Settings Modal -->
 <div class="modal-backdrop" id="settingsModal">
   <div class="modal">
-    <h3 style="margin-bottom:12px;">⚙️ Hardware & Scanner Settings</h3>
+    <h3 style="margin-bottom:12px;">⚙️ Hardware &amp; Scanner Settings</h3>
     <div class="form-row">
       <label for="cfgAutoScan">Background Auto-Scan</label>
       <input type="checkbox" id="cfgAutoScan" checked>
@@ -392,7 +578,7 @@ select, input[type="number"] {
     </div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;">
       <button onclick="closeSettings()">Cancel</button>
-      <button class="primary" onclick="saveSettings()">Save & Apply</button>
+      <button class="primary" onclick="saveSettings()">Save &amp; Apply</button>
     </div>
   </div>
 </div>
@@ -402,6 +588,353 @@ let allDevices = [];
 let currentFilter = 'ALL';
 let sortField = 'rssi';
 let sortAsc = false;
+let gattBusy = false;
+let lastGattDiscovery = null;
+
+// Standard Bluetooth SIG 16-bit Service & Characteristic UUID Dictionary
+const BLE_SERVICE_NAMES = {
+  '1800': 'Generic Access (GAP)',
+  '1801': 'Generic Attribute (GATT)',
+  '1802': 'Immediate Alert',
+  '1803': 'Link Loss',
+  '1804': 'Tx Power',
+  '1805': 'Current Time',
+  '180a': 'Device Information',
+  '180d': 'Heart Rate',
+  '180f': 'Battery Service',
+  '1812': 'HID',
+  '181a': 'Environmental Sensing',
+  'fe95': 'Xiaomi Mijia',
+  'feed': 'Tile Tracker',
+  'feec': 'Tile Tracker',
+  'fd5a': 'Samsung SmartTag',
+  'fff6': 'Matter Commissioning',
+  'ffe0': 'Vendor UART / Serial'
+};
+
+const BLE_CHAR_NAMES = {
+  '2a00': 'Device Name',
+  '2a01': 'Appearance',
+  '2a04': 'Preferred Conn Params',
+  '2a05': 'Service Changed',
+  '2a06': 'Alert Level',
+  '2a07': 'Tx Power Level',
+  '2a19': 'Battery Level',
+  '2a23': 'System ID',
+  '2a24': 'Model Number',
+  '2a25': 'Serial Number',
+  '2a26': 'Firmware Revision',
+  '2a27': 'Hardware Revision',
+  '2a28': 'Software Revision',
+  '2a29': 'Manufacturer Name',
+  '2a2b': 'Current Time',
+  '2a37': 'Heart Rate Measurement',
+  '2a4a': 'HID Information',
+  '2a4b': 'Report Map',
+  '2a4d': 'HID Report',
+  '2a50': 'PnP ID',
+  '2a6d': 'Pressure',
+  '2a6e': 'Temperature',
+  '2a6f': 'Humidity',
+  'ffe1': 'Vendor Serial RX/TX'
+};
+
+function shortUuidKey(uuidStr) {
+  if (!uuidStr) return '';
+  let s = String(uuidStr).toLowerCase().trim();
+  if (s.startsWith('0x')) s = s.slice(2);
+  if (s.length === 4) return s;
+  if (s.length === 36 && s.startsWith('0000') && s.endsWith('-0000-1000-8000-00805f9b34fb')) {
+    return s.slice(4, 8);
+  }
+  return s;
+}
+
+function resolveServiceName(uuidStr) {
+  const k = shortUuidKey(uuidStr);
+  return BLE_SERVICE_NAMES[k] || 'Custom / Vendor Service';
+}
+
+function resolveCharName(uuidStr) {
+  const k = shortUuidKey(uuidStr);
+  return BLE_CHAR_NAMES[k] || 'Characteristic';
+}
+
+function switchPage(page) {
+  const isBle = (page === 'ble');
+  document.getElementById('navDashboard').classList.toggle('active', !isBle);
+  document.getElementById('navBleExplorer').classList.toggle('active', isBle);
+  document.getElementById('viewDashboard').classList.toggle('active', !isBle);
+  document.getElementById('viewBleExplorer').classList.toggle('active', isBle);
+  if (isBle) {
+    populateBleSelector();
+  }
+}
+
+function inspectBleDevice(mac, addrType) {
+  switchPage('ble');
+  document.getElementById('bleTargetMac').value = mac;
+  if (typeof addrType === 'number') {
+    document.getElementById('bleAddrType').value = String(addrType);
+  } else {
+    document.getElementById('bleAddrType').value = '-1';
+  }
+  populateBleSelector();
+  discoverBleGatt();
+}
+
+function populateBleSelector() {
+  const sel = document.getElementById('bleDeviceSelect');
+  const currentTarget = (document.getElementById('bleTargetMac').value || '').toUpperCase();
+  const bleDevs = allDevices
+    .filter(d => d.proto === 'BLE' || d.proto === 'MATTER' || d.proto === 'MAT')
+    .sort((a, b) => b.rssi - a.rssi);
+
+  const opts = ['<option value="">-- Select a discovered BLE device (' + bleDevs.length + ' found) --</option>'];
+  bleDevs.forEach(d => {
+    const addrLabel = d.addr_type === 1 ? 'Random' : 'Public';
+    const connLabel = d.connectable === false ? 'Beacon' : 'Connectable';
+    const selected = (d.id && d.id.toUpperCase() === currentTarget) ? ' selected' : '';
+    opts.push(
+      `<option value="${escapeHtml(d.id)}" data-addrtype="${d.addr_type || 0}"${selected}>` +
+      `${escapeHtml(d.id)} — ${escapeHtml(d.name)} (${d.rssi} dBm | ${addrLabel} | ${connLabel})</option>`
+    );
+  });
+  sel.innerHTML = opts.join('');
+}
+
+function onBleSelectChange() {
+  const sel = document.getElementById('bleDeviceSelect');
+  const val = sel.value;
+  if (val) {
+    document.getElementById('bleTargetMac').value = val;
+    const opt = sel.options[sel.selectedIndex];
+    const at = opt ? opt.getAttribute('data-addrtype') : '-1';
+    document.getElementById('bleAddrType').value = (at !== null) ? at : '-1';
+  }
+}
+
+function setBleBanner(state, text, meta) {
+  const banner = document.getElementById('bleConnBanner');
+  banner.className = 'ble-conn-banner' + (state ? ' ' + state : '');
+  document.getElementById('bleConnText').innerHTML = text;
+  document.getElementById('bleConnMeta').textContent = meta || '';
+}
+
+async function discoverBleGatt() {
+  const mac = (document.getElementById('bleTargetMac').value || '').trim();
+  if (!mac) {
+    setBleBanner('error', '⚠️ Please select a BLE device from the dropdown or enter a valid MAC address.', '');
+    return;
+  }
+  const addr_type = parseInt(document.getElementById('bleAddrType').value, 10);
+  const btn = document.getElementById('btnDiscoverGatt');
+  btn.disabled = true;
+  gattBusy = true;
+
+  const badge = document.getElementById('scanBadge');
+  badge.textContent = 'GATT';
+  badge.className = 'status-pill scanning';
+  setBleBanner('', `⏳ Connecting to <strong>${escapeHtml(mac)}</strong> and discovering GATT services &amp; characteristics...`, 'Timeout: 2.5s');
+
+  try {
+    const res = await fetch('/api/ble/discover', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ mac, addr_type })
+    });
+    const data = await res.json();
+    if (!res.ok || data.status !== 'ok') {
+      setBleBanner('error', `❌ <strong>GATT Discovery Failed (${escapeHtml(mac)}):</strong> ${escapeHtml(data.error || 'Connection failed')}`, '');
+      document.getElementById('btnReadAllGatt').disabled = true;
+      return;
+    }
+
+    lastGattDiscovery = data;
+    const addrTypeStr = data.addr_type === 1 ? 'Random' : 'Public';
+    setBleBanner(
+      'connected',
+      `🟢 Connected to <strong>${escapeHtml(data.name || data.mac)}</strong> (<span class="mono">${escapeHtml(data.mac)}</span>)`,
+      `Addr: ${addrTypeStr} • RSSI: ${data.rssi} dBm • MTU: ${data.mtu} • ${data.service_count} Services / ${data.char_count} Chars`
+    );
+    renderGattTree(data);
+  } catch (e) {
+    setBleBanner('error', `❌ Network error while communicating with chip-scanner: ${escapeHtml(e.message)}`, '');
+  } finally {
+    btn.disabled = false;
+    gattBusy = false;
+    fetchStatsAndDevices();
+  }
+}
+
+function renderGattTree(data) {
+  const container = document.getElementById('gattServicesContainer');
+  document.getElementById('gattTreeSummary').textContent =
+    `${data.service_count} Services • ${data.char_count} Characteristics on ${data.mac}`;
+
+  const services = data.services || [];
+  if (services.length === 0) {
+    container.innerHTML = '<div style="text-align:center;color:var(--muted);padding:24px;">Connected, but 0 primary GATT services were reported by this peripheral.</div>';
+    document.getElementById('btnReadAllGatt').disabled = true;
+    return;
+  }
+
+  let hasReadable = false;
+  container.innerHTML = services.map(svc => {
+    const svcName = resolveServiceName(svc.uuid);
+    const chars = svc.characteristics || [];
+    const charRows = chars.map(chr => {
+      if (chr.can_read) hasReadable = true;
+      const chrName = resolveCharName(chr.uuid);
+      const propsHtml = (chr.properties || []).map(p => {
+        const cls = p === 'READ' ? ' read' : (p.startsWith('WRITE') ? ' write' : '');
+        return `<span class="prop-badge${cls}">${escapeHtml(p)}</span>`;
+      }).join('') || '<span style="color:var(--muted);font-size:0.75rem;">NONE</span>';
+
+      return `<tr>
+        <td>
+          <div><strong>${escapeHtml(chrName)}</strong></div>
+          <div class="mono" style="color:var(--muted);">${escapeHtml(chr.uuid)}</div>
+        </td>
+        <td class="mono">#${chr.handle}</td>
+        <td>${propsHtml}</td>
+        <td>
+          <button class="sm-btn ${chr.can_read ? 'ble-btn' : ''}" id="btn-read-${chr.handle}"
+            onclick="readBleCharacteristic('${escapeHtml(data.mac)}', ${data.addr_type}, '${escapeHtml(svc.uuid)}', '${escapeHtml(chr.uuid)}', ${chr.handle})">
+            📖 Read
+          </button>
+          <div class="char-val-box" id="char-val-${chr.handle}"></div>
+        </td>
+      </tr>`;
+    }).join('');
+
+    return `<div class="svc-card">
+      <div class="svc-header">
+        <div>
+          <strong>Service: ${escapeHtml(svcName)}</strong>
+          <span class="mono" style="color:#38bdf8;margin-left:8px;">${escapeHtml(svc.uuid)}</span>
+        </div>
+        <div class="mono" style="color:var(--muted);font-size:0.76rem;">
+          Handles: ${svc.start_handle}..${svc.end_handle} (${chars.length} chars)
+        </div>
+      </div>
+      <div class="table-wrap" style="max-height:none;">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:34%">Characteristic / UUID</th>
+              <th style="width:10%">Handle</th>
+              <th style="width:22%">Properties</th>
+              <th style="width:34%">Read &amp; Value Inspector</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${charRows || '<tr><td colspan="4" style="color:var(--muted);text-align:center;">No characteristics in this service</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('btnReadAllGatt').disabled = !hasReadable;
+}
+
+async function readBleCharacteristic(mac, addrType, serviceUuid, charUuid, handle) {
+  const btn = document.getElementById('btn-read-' + handle);
+  const valBox = document.getElementById('char-val-' + handle);
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Reading...';
+  }
+  gattBusy = true;
+
+  try {
+    const res = await fetch('/api/ble/read', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        mac,
+        addr_type: addrType,
+        service_uuid: serviceUuid,
+        char_uuid: charUuid,
+        handle
+      })
+    });
+    const data = await res.json();
+    if (!res.ok || data.status !== 'ok') {
+      if (valBox) {
+        valBox.className = 'char-val-box visible';
+        valBox.innerHTML = `<span style="color:#fca5a5;">❌ Read failed: ${escapeHtml(data.error || 'Error')}</span>`;
+      }
+      return false;
+    }
+
+    const nowStr = new Date().toLocaleTimeString();
+    if (valBox) {
+      valBox.className = 'char-val-box visible';
+      valBox.innerHTML = `
+        <div class="char-val-grid">
+          <span class="char-val-key">Decoded:</span>
+          <strong style="color:#34d399;">${escapeHtml(data.decoded)}</strong>
+          <span class="char-val-key">UTF-8:</span>
+          <span class="mono">${escapeHtml(data.utf8 || '<empty>')}</span>
+          <span class="char-val-key">Hex (${data.length}B):</span>
+          <span class="mono" style="color:#38bdf8;">
+            ${escapeHtml(data.hex || '--')}
+            <button class="sm-btn" style="margin-left:6px;padding:1px 6px;font-size:0.68rem;" onclick="navigator.clipboard.writeText('${escapeHtml(data.hex || '')}')">📋 Copy</button>
+          </span>
+          <span class="char-val-key">Read At:</span>
+          <span class="mono" style="color:var(--muted);">${escapeHtml(nowStr)} (${data.rssi} dBm)</span>
+        </div>`;
+    }
+    return true;
+  } catch (e) {
+    if (valBox) {
+      valBox.className = 'char-val-box visible';
+      valBox.innerHTML = `<span style="color:#fca5a5;">❌ Request error: ${escapeHtml(e.message)}</span>`;
+    }
+    return false;
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '📖 Read';
+    }
+    gattBusy = false;
+  }
+}
+
+async function readAllReadableChars() {
+  if (!lastGattDiscovery || !lastGattDiscovery.services) return;
+  const btn = document.getElementById('btnReadAllGatt');
+  btn.disabled = true;
+  const origText = btn.textContent;
+  btn.textContent = '⏳ Reading All...';
+
+  for (const svc of lastGattDiscovery.services) {
+    for (const chr of (svc.characteristics || [])) {
+      if (chr.can_read) {
+        await readBleCharacteristic(
+          lastGattDiscovery.mac,
+          lastGattDiscovery.addr_type,
+          svc.uuid,
+          chr.uuid,
+          chr.handle
+        );
+      }
+    }
+  }
+
+  btn.textContent = origText;
+  btn.disabled = false;
+  fetchStatsAndDevices();
+}
+
+async function disconnectBleGatt() {
+  try {
+    await fetch('/api/ble/disconnect', { method: 'POST' });
+    setBleBanner('', '⚪ Disconnected from BLE peripheral. Background multi-protocol scanning resumed.', '');
+  } catch (e) {}
+}
 
 async function syncRtcClock() {
   try {
@@ -436,7 +969,11 @@ function renderTable() {
   const q = (document.getElementById('searchInput').value || '').toLowerCase();
 
   let filtered = allDevices.filter(d => {
-    if (currentFilter !== 'ALL' && d.proto !== currentFilter) return false;
+    if (currentFilter !== 'ALL') {
+      if (currentFilter === '15.4' && d.proto !== 'ZIGBEE' && d.proto !== '15.4') return false;
+      else if (currentFilter === 'MAT' && d.proto !== 'MATTER' && d.proto !== 'MAT') return false;
+      else if (currentFilter !== '15.4' && currentFilter !== 'MAT' && d.proto !== currentFilter) return false;
+    }
     if (!q) return true;
     return (d.name && d.name.toLowerCase().includes(q)) ||
            (d.id && d.id.toLowerCase().includes(q)) ||
@@ -457,19 +994,24 @@ function renderTable() {
 
   tbody.innerHTML = filtered.map(d => {
     const badgeClass = d.proto === '15.4' ? 'ZIGBEE' : d.proto;
+    const isBleOrMatter = (d.proto === 'BLE' || d.proto === 'MATTER' || d.proto === 'MAT');
+    const inspectBtn = isBleOrMatter
+      ? ` <button class="sm-btn ble-btn" style="margin-left:6px;" onclick="inspectBleDevice('${escapeHtml(d.id)}', ${d.addr_type || 0})">🔍 Inspect GATT</button>`
+      : '';
     return `<tr>
       <td><span class="badge ${escapeHtml(badgeClass)}">${escapeHtml(d.proto)}</span></td>
       <td><strong>${escapeHtml(d.name)}</strong></td>
       <td class="mono">${escapeHtml(d.id)}</td>
       <td class="mono">${d.ch}</td>
       <td class="rssi-bar">${d.rssi} dBm</td>
-      <td>${escapeHtml(d.details)}</td>
+      <td>${escapeHtml(d.details)}${inspectBtn}</td>
       <td class="mono">${d.age}s ago</td>
     </tr>`;
   }).join('');
 }
 
 async function fetchStatsAndDevices() {
+  if (gattBusy) return;
   try {
     const [stRes, devRes, logRes] = await Promise.all([
       fetch('/api/stats'),
@@ -497,6 +1039,9 @@ async function fetchStatsAndDevices() {
       const data = await devRes.json();
       allDevices = data.devices || [];
       renderTable();
+      if (document.getElementById('viewBleExplorer').classList.contains('active')) {
+        populateBleSelector();
+      }
     }
     if (logRes.ok) {
       const ldata = await logRes.json();
@@ -504,7 +1049,7 @@ async function fetchStatsAndDevices() {
       box.innerHTML = (ldata.logs || []).map(l => {
         const bcls = l.proto === '15.4' ? 'ZIGBEE' : l.proto;
         return `<div class="log-line">
-          <span class="log-ts">[${escapeHtml(l.ts)}]</span>
+          <span class="log-ts">${escapeHtml(l.ts_str || ('[' + l.ts + ']'))}</span>
           <span class="badge ${escapeHtml(bcls)}">${escapeHtml(l.proto)}</span>
           <span> ${escapeHtml(l.msg)}</span>
         </div>`;
@@ -561,4 +1106,3 @@ setInterval(fetchStatsAndDevices, 2000);
 </script>
 </body>
 </html>
-

@@ -45,7 +45,9 @@ bool device_table_upsert(rf_protocol_t protocol,
                          const char* name,
                          int8_t rssi,
                          uint8_t channel,
-                         const char* details) {
+                         const char* details,
+                         uint8_t ble_addr_type,
+                         bool ble_connectable) {
     if (!mac_or_id || id_len == 0) return false;
     uint8_t norm_id[8] = {0};
     size_t copy_len = (id_len > 8) ? 8 : id_len;
@@ -91,6 +93,8 @@ bool device_table_upsert(rf_protocol_t protocol,
         discovered_device_t& dev = s_devices[target_idx];
         dev.rssi = rssi;
         dev.channel = channel;
+        dev.ble_addr_type = ble_addr_type;
+        dev.ble_connectable = ble_connectable;
         dev.last_seen_ms = millis();
 
         if (name && name[0] != '\0') {
@@ -116,6 +120,51 @@ bool device_table_upsert(rf_protocol_t protocol,
     }
 
     return is_new;
+}
+
+bool device_table_lookup_ble(const uint8_t mac[6],
+                             uint8_t* out_addr_type,
+                             bool* out_connectable,
+                             char* out_name,
+                             size_t name_len) {
+    if (!mac) return false;
+    uint8_t norm_id[8] = {0};
+    memcpy(norm_id, mac, 6);
+
+    bool found = false;
+    if (data_table_mutex && xSemaphoreTake(data_table_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        for (size_t i = 0; i < s_device_count; ++i) {
+            if ((s_devices[i].protocol == PROTO_BLE || s_devices[i].protocol == PROTO_MATTER) &&
+                memcmp(s_devices[i].mac_or_id, norm_id, 6) == 0) {
+                if (out_addr_type) *out_addr_type = s_devices[i].ble_addr_type;
+                if (out_connectable) *out_connectable = s_devices[i].ble_connectable;
+                if (out_name && name_len > 0) {
+                    strncpy(out_name, s_devices[i].name, name_len - 1);
+                    out_name[name_len - 1] = '\0';
+                }
+                found = true;
+                break;
+            }
+        }
+        xSemaphoreGive(data_table_mutex);
+    }
+    return found;
+}
+
+bool parse_mac_str(const char* mac_str, uint8_t out_mac[6]) {
+    if (!mac_str || !out_mac) return false;
+    unsigned int b[6] = {0};
+    int parsed = sscanf(mac_str, "%02x:%02x:%02x:%02x:%02x:%02x",
+                        &b[0], &b[1], &b[2], &b[3], &b[4], &b[5]);
+    if (parsed != 6) {
+        parsed = sscanf(mac_str, "%02x-%02x-%02x-%02x-%02x-%02x",
+                        &b[0], &b[1], &b[2], &b[3], &b[4], &b[5]);
+    }
+    if (parsed != 6) return false;
+    for (int i = 0; i < 6; ++i) {
+        out_mac[i] = (uint8_t)(b[i] & 0xFF);
+    }
+    return true;
 }
 
 protocol_counts_t device_table_get_counts() {

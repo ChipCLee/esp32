@@ -1,6 +1,7 @@
 #include "scanner_154.h"
 #include "device_table.h"
 #include "log_buffer.h"
+#include "rf_scheduler.h"
 #include <esp_ieee802154.h>
 #include <esp_coexist.h>
 
@@ -191,7 +192,9 @@ void scanner_154_scan_step(uint8_t start_channel, uint8_t num_channels) {
 
 void scanner_154_full_sweep() {
     for (uint8_t ch = 11; ch <= 26; ch += 2) {
+        if (rf_scheduler_is_gatt_requested()) break;
         scanner_154_scan_step(ch, 2);
+        if (rf_scheduler_is_gatt_requested()) break;
         // 100ms Home-Channel Recovery Window for SoftAP Wi-Fi DTIM beacons & HTTP traffic
         vTaskDelay(pdMS_TO_TICKS(100));
     }

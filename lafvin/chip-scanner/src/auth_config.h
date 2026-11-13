@@ -4,6 +4,7 @@
 
 // Default Wi-Fi SoftAP & HTTP Authentication Configuration (FR-1, FR-11)
 #define DEFAULT_AP_SSID       "chip-scanner"
+#define DEFAULT_AP_PASS       "pw4ggyy!"
 #define DEFAULT_AP_CHANNEL    1
 #define DEFAULT_HTTP_USER     "admin"
 #define DEFAULT_HTTP_PASS     "pw4ggyy!"
@@ -16,6 +17,7 @@ typedef struct {
     bool auto_scan;
     uint16_t interval_s;
     bool lcd_backlight;
+    char ap_pass[32];
     char http_user[24];
     char http_pass[32];
 } scanner_config_t;

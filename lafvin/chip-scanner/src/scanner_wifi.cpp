@@ -30,8 +30,9 @@ void scanner_wifi_init() {
     IPAddress subnet(255, 255, 255, 0);
     WiFi.softAPConfig(local_ip, gateway, subnet);
 
-    // Start SoftAP "chip-scanner" on channel 1
-    WiFi.softAP(DEFAULT_AP_SSID, nullptr, DEFAULT_AP_CHANNEL, 0, 4);
+    // Start WPA2-PSK secured SoftAP "chip-scanner" on channel 1 (default password: "pw4ggyy!")
+    const char* ap_pass = (strlen(g_config.ap_pass) >= 8) ? g_config.ap_pass : DEFAULT_AP_PASS;
+    WiFi.softAP(DEFAULT_AP_SSID, ap_pass, DEFAULT_AP_CHANNEL, 0, 4);
 
     // Enable Wi-Fi 6 (802.11ax HE) protocol support on AP & STA interfaces
     esp_wifi_set_protocol(WIFI_IF_AP, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_11AX);

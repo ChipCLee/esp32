@@ -27,13 +27,27 @@ void auth_config_init() {
     g_config.auto_scan = true;
     g_config.interval_s = 15;
     g_config.lcd_backlight = true;
+    strncpy(g_config.ap_pass, DEFAULT_AP_PASS, sizeof(g_config.ap_pass) - 1);
+    g_config.ap_pass[sizeof(g_config.ap_pass) - 1] = '\0';
     strncpy(g_config.http_user, DEFAULT_HTTP_USER, sizeof(g_config.http_user) - 1);
+    g_config.http_user[sizeof(g_config.http_user) - 1] = '\0';
     strncpy(g_config.http_pass, DEFAULT_HTTP_PASS, sizeof(g_config.http_pass) - 1);
+    g_config.http_pass[sizeof(g_config.http_pass) - 1] = '\0';
 
     if (s_prefs.begin("chip_scan", true)) {
         g_config.auto_scan = s_prefs.getBool("auto_scan", true);
         g_config.interval_s = s_prefs.getUShort("interval_s", 15);
         g_config.lcd_backlight = s_prefs.getBool("lcd_bl", true);
+        String saved_ap_pass = s_prefs.getString("ap_pass", DEFAULT_AP_PASS);
+        if (saved_ap_pass.length() >= 8 && saved_ap_pass.length() < sizeof(g_config.ap_pass)) {
+            strncpy(g_config.ap_pass, saved_ap_pass.c_str(), sizeof(g_config.ap_pass) - 1);
+            g_config.ap_pass[sizeof(g_config.ap_pass) - 1] = '\0';
+        }
+        String saved_http_pass = s_prefs.getString("http_pass", DEFAULT_HTTP_PASS);
+        if (saved_http_pass.length() >= 4 && saved_http_pass.length() < sizeof(g_config.http_pass)) {
+            strncpy(g_config.http_pass, saved_http_pass.c_str(), sizeof(g_config.http_pass) - 1);
+            g_config.http_pass[sizeof(g_config.http_pass) - 1] = '\0';
+        }
         s_prefs.end();
     }
 }
@@ -43,6 +57,8 @@ void auth_config_save() {
         s_prefs.putBool("auto_scan", g_config.auto_scan);
         s_prefs.putUShort("interval_s", g_config.interval_s);
         s_prefs.putBool("lcd_bl", g_config.lcd_backlight);
+        s_prefs.putString("ap_pass", g_config.ap_pass);
+        s_prefs.putString("http_pass", g_config.http_pass);
         s_prefs.end();
     }
 }

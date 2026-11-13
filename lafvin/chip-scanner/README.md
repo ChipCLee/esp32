@@ -3,7 +3,7 @@
 Firmware implementation of [design.md](design.md) for the **LAFVIN ESP32-C6 Development Board with 1.47" Color LCD (Model LB008)**.
 
 ## Key Features
-- **Standalone Wi-Fi 6 SoftAP (`chip-scanner`)**: Hosts a local web portal at `http://192.168.4.1` with zero external router dependencies.
+- **Standalone Wi-Fi 6 SoftAP (`chip-scanner`)**: Hosts a WPA2-PSK secured local Wi-Fi access point (default password: `pw4ggyy!`) and web portal at `http://192.168.4.1` with zero external router dependencies.
 - **Password-Protected Web Dashboard**: HTTP Basic Authentication (`admin` / `pw4ggyy!`) with constant-time credential verification and a 5-failure / 5-second brute-force lockout (`NFR-7`).
 - **Time-Sliced Multi-Protocol RF Discovery**:
   - **Wi-Fi 4 / Wi-Fi 6 (802.11 b/g/n/ax)**: Channel-interleaved micro-scans (`<= 90ms` off-channel + `100ms` SoftAP home-channel recovery) across channels 1–13.

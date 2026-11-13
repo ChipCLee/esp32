@@ -22,7 +22,7 @@ The device operates entirely without external cloud infrastructure:
 
 | ID | Requirement Category | Specification Details |
 | :--- | :--- | :--- |
-| **FR-1** | **Wi-Fi SoftAP & Web Server** | Broadcast a standalone 802.11ax/n Access Point (`SSID: chip-scanner`, default IP: `192.168.4.1`, configurable Open or WPA2-PSK with `pw4ggyy!`) with a lightweight embedded HTTP server serving a single-page responsive dashboard. |
+| **FR-1** | **Wi-Fi SoftAP & Web Server** | Broadcast a standalone WPA2-PSK secured 802.11ax/n Access Point (`SSID: chip-scanner`, default password: `pw4ggyy!`, default IP: `192.168.4.1`) with a lightweight embedded HTTP server serving a single-page responsive dashboard. |
 | **FR-2** | **Wi-Fi Device Discovery** | Perform periodic active/passive channel scans across 2.4 GHz channels 1–13. Capture SSID, BSSID (MAC), RSSI, channel, encryption type (Open, WPA2, WPA3), and 802.11 generation (Wi-Fi 4/5/6). |
 | **FR-3** | **BLE 5.3 Discovery** | Execute active BLE scanning cycles using the lightweight **NimBLE v2.x** stack to discover BLE peripherals, beacons, smart trackers (Apple AirTags, Tile, SmartTags), and environmental sensors (Govee/Mijia). |
 | **FR-4** | **IEEE 802.15.4 / Zigbee Discovery** | Use the native `esp_ieee802154` MAC/PHY driver to sweep channels 11–26 using active 802.15.4 Beacon Requests (`0x07`) and promiscuous frame sniffing. Extract PAN IDs, Extended PAN IDs, source addresses, channels, RSSI, and LQI. |

@@ -249,6 +249,16 @@ static void handle_api_config() {
         }
     }
 
+    if (doc["ap_password"].is<const char*>()) {
+        const char* ap = doc["ap_password"].as<const char*>();
+        if (ap && strlen(ap) >= 8 && strlen(ap) < sizeof(g_config.ap_pass)) {
+            strncpy(g_config.ap_pass, ap, sizeof(g_config.ap_pass) - 1);
+            g_config.ap_pass[sizeof(g_config.ap_pass) - 1] = '\0';
+            log_buffer_push(PROTO_SYSTEM, "Wi-Fi AP password updated");
+            save_needed = true;
+        }
+    }
+
     if (save_needed) {
         auth_config_save();
     }

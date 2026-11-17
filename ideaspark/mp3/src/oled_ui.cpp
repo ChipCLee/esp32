@@ -37,6 +37,7 @@ static void poll_boot_button() {
     static bool btn_down = false;
     static uint32_t down_ms = 0;
     static bool long_handled = false;
+    static bool portal_handled = false;
 
     bool pressed = (digitalRead(PIN_BOOT_BTN) == LOW);
     uint32_t now = millis();
@@ -45,14 +46,24 @@ static void poll_boot_button() {
         btn_down = true;
         down_ms = now;
         long_handled = false;
-    } else if (pressed && btn_down && !long_handled) {
-        if (now - down_ms >= 1500) {
+        portal_handled = false;
+    } else if (pressed && btn_down) {
+        uint32_t held = now - down_ms;
+        if (!portal_handled && held >= 3500) {
+            portal_handled = true;
+            long_handled = true;
+            mp3_player_enter_portal_mode();
+        } else if (!long_handled && held >= 1500) {
             long_handled = true;
             mp3_player_next();
         }
     } else if (!pressed && btn_down) {
-        if (!long_handled && (now - down_ms >= 50)) {
-            mp3_player_toggle_pause();
+        if (!long_handled && !portal_handled && (now - down_ms >= 50)) {
+            if (mp3_player_get_state() == PLAYER_STOPPED) {
+                mp3_player_next();
+            } else {
+                mp3_player_toggle_pause();
+            }
         }
         btn_down = false;
     }

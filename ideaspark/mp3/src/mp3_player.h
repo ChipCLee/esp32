@@ -9,6 +9,7 @@ void mp3_decoder_task(void* param);
 // Library management (thread-safe via fs_mutex)
 void mp3_player_refresh_library();
 size_t mp3_player_get_tracks(mp3_track_t* out_tracks, size_t max_tracks);
+bool mp3_player_get_track(size_t index, mp3_track_t* out_track);
 bool mp3_extract_metadata(File& f, const char* path, char* out_title, size_t title_len, char* out_artist, size_t artist_len);
 
 // Transport controls
@@ -17,6 +18,7 @@ void mp3_player_pause();
 void mp3_player_resume();
 void mp3_player_toggle_pause();
 void mp3_player_stop_and_close();
+void mp3_player_enter_portal_mode();
 void mp3_player_next();
 void mp3_player_prev();
 void mp3_player_set_volume(uint8_t vol_0_100);

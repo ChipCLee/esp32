@@ -35,20 +35,28 @@ void setup() {
                       (unsigned)LittleFS.usedBytes(), (unsigned)LittleFS.totalBytes());
     }
 
-    // 4. Initialize OLED Display, MP3 Player, Wi-Fi SoftAP Web Server, and Bluetooth A2DP Source
+    // 4. Initialize Bluetooth A2DP Source first, then Wi-Fi SoftAP, OLED, and MP3 Player
+    Serial.printf("[BOOT] Free Heap before BT: %u (max block: %u)\n",
+                  (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+    bt_manager_init();
+    Serial.printf("[BOOT] Free Heap after BT: %u (max block: %u)\n",
+                  (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+    web_server_init();
+    Serial.printf("[BOOT] Free Heap after WiFi: %u (max block: %u)\n",
+                  (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
     oled_ui_init();
     mp3_player_init();
-    web_server_init();
-    bt_manager_init();
+    Serial.printf("[BOOT] Free Heap after MP3: %u (max block: %u)\n",
+                  (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
 
     // 5. Pin Application Tasks to Core 1 (APP_CPU) so Core 0 (PRO_CPU) handles Wi-Fi & A2DP cleanly
-    xTaskCreatePinnedToCore(mp3_decoder_task, "mp3_dec", 6144, nullptr, 3, nullptr, 1);
-    xTaskCreatePinnedToCore(web_server_task,  "web_srv", 6144, nullptr, 2, nullptr, 1);
-    xTaskCreatePinnedToCore(oled_ui_task,     "oled_ui", 4096, nullptr, 1, nullptr, 1);
+    xTaskCreatePinnedToCore(mp3_decoder_task, "mp3_dec", 4096, nullptr, 3, nullptr, 1);
+    xTaskCreatePinnedToCore(web_server_task,  "web_srv", 4096, nullptr, 2, nullptr, 1);
 
     Serial.printf("[BOOT] Free Heap after init: %u bytes\n", (unsigned)ESP.getFreeHeap());
 }
 
 void loop() {
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    // Reuse Arduino loopTask (Core 1) for OLED UI to save a 4 KB FreeRTOS task stack
+    oled_ui_task(nullptr);
 }

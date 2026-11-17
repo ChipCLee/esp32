@@ -11,6 +11,7 @@ static size_t s_bt_device_count = 0;
 
 static volatile bool s_bt_connected = false;
 static volatile bool s_bt_scanning = false;
+static bool s_bt_started = false;
 static uint32_t s_scan_start_ms = 0;
 
 static uint8_t s_target_mac[6] = {0};
@@ -102,10 +103,8 @@ static bool on_bt_ssid_discovered(const char* ssid, esp_bd_addr_t address, int r
     return false;
 }
 
-void bt_manager_init() {
-    pinMode(PIN_STATUS_LED, OUTPUT);
-    digitalWrite(PIN_STATUS_LED, LOW);
-
+static void bt_ensure_started() {
+    if (s_bt_started) return;
     s_a2dp_source.set_auto_reconnect(false);
     s_a2dp_source.set_ssp_enabled(true);
     s_a2dp_source.set_ssid_callback(on_bt_ssid_discovered);
@@ -113,11 +112,17 @@ void bt_manager_init() {
     s_a2dp_source.set_data_callback_in_frames(a2dp_get_data_frames);
     s_a2dp_source.set_local_name("Ideaspark-MP3");
 
-    // Start Bluedroid A2DP Source stack (pass empty vector so it stays idle until scan/connect)
     std::vector<const char*> empty_names;
     s_a2dp_source.start(empty_names);
+    s_bt_started = true;
+}
 
-    // Check NVS for previously paired Bluetooth speaker
+void bt_manager_init() {
+    pinMode(PIN_STATUS_LED, OUTPUT);
+    digitalWrite(PIN_STATUS_LED, LOW);
+
+    // Defer starting Bluedroid A2DP discovery until scan/connect/playback so
+    // Classic BT Inquiry doesn't starve the 2.4 GHz Wi-Fi SoftAP at boot.
     s_prefs.begin("bt_cfg", true);
     String saved_name = s_prefs.getString("name", "");
     String saved_mac  = s_prefs.getString("mac", "");
@@ -130,6 +135,7 @@ void bt_manager_init() {
 }
 
 void bt_manager_start_scan() {
+    bt_ensure_started();
     if (state_mutex && xSemaphoreTake(state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         s_bt_device_count = 0;
         xSemaphoreGive(state_mutex);
@@ -158,6 +164,7 @@ size_t bt_manager_get_devices(bt_device_info_t* out_devs, size_t max_devs) {
 }
 
 bool bt_manager_connect(const char* name, const char* mac_str) {
+    bt_ensure_started();
     s_bt_scanning = false;
     esp_bt_gap_cancel_discovery();
 

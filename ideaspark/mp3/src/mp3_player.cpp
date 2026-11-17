@@ -1,10 +1,11 @@
 #include "mp3_player.h"
+#include "web_server.h"
 #include <MP3DecoderHelix.h>
 
 using namespace libhelix;
 
-// 16 KB Lock-Free Stereo PCM Ring Buffer (4096 stereo frames @ 44.1kHz = ~93ms)
-#define PCM_RING_FRAMES     4096
+// 8 KB Lock-Free Stereo PCM Ring Buffer (2048 stereo frames @ 44.1kHz = ~46ms)
+#define PCM_RING_FRAMES     2048
 #define PCM_RING_MASK       (PCM_RING_FRAMES - 1)
 
 typedef struct __attribute__((packed)) {
@@ -254,10 +255,9 @@ static void on_helix_pcm_data(MP3FrameInfo &info, int16_t *pcm_buffer, size_t le
 
 void mp3_player_init() {
     ring_flush();
+    // Create decoder instance lazily; buffers (~36 KB) are allocated on begin() during playback
+    // so Wi-Fi SoftAP can run at boot within ESP32 DRAM limits.
     s_helix = new MP3DecoderHelix(on_helix_pcm_data);
-    if (s_helix) {
-        s_helix->begin();
-    }
     mp3_player_refresh_library();
 }
 
@@ -304,10 +304,25 @@ size_t mp3_player_get_tracks(mp3_track_t* out_tracks, size_t max_tracks) {
     return count;
 }
 
+bool mp3_player_get_track(size_t index, mp3_track_t* out_track) {
+    if (!out_track) return false;
+    bool ok = false;
+    if (state_mutex && xSemaphoreTake(state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        if (index < s_track_count) {
+            *out_track = s_tracks[index];
+            ok = true;
+        }
+        xSemaphoreGive(state_mutex);
+    }
+    return ok;
+}
+
 bool mp3_player_play(const char* path) {
     if (!path || path[0] == '\0') return false;
 
     mp3_player_stop_and_close();
+    // Stop Wi-Fi SoftAP before allocating MP3DecoderHelix (~36 KB) for playback
+    web_server_stop();
 
     if (state_mutex && xSemaphoreTake(state_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
         strncpy(s_cur_path, path, sizeof(s_cur_path) - 1);
@@ -371,6 +386,14 @@ void mp3_player_stop_and_close() {
     while (s_file_open && (millis() - t0) < 300) {
         vTaskDelay(pdMS_TO_TICKS(10));
     }
+}
+
+void mp3_player_enter_portal_mode() {
+    mp3_player_stop_and_close();
+    if (s_helix) {
+        s_helix->end();
+    }
+    web_server_start();
 }
 
 void mp3_player_next() {

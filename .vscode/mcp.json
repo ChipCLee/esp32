@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "arduino": {
+      "command": "/opt/homebrew/bin/arduino-mcp-server",
+      "env": {
+        "ARDUINO_CLI_PATH": "/opt/homebrew/bin/arduino-cli",
+        "ARDUINO_SKETCH_ROOT": "/Users/cheng-chunglee/esp32"
+      }
+    }
+  }
+}

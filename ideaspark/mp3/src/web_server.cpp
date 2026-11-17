@@ -303,8 +303,10 @@ static void handle_api_player_control() {
 }
 
 static void handle_api_bt_scan() {
-  bt_manager_start_scan();
+  Serial.println("[WEB] POST /api/bt/scan");
   s_server.send(200, "application/json", "{\"status\":\"scanning\"}");
+  vTaskDelay(pdMS_TO_TICKS(20));
+  bt_manager_start_scan();
 }
 
 static void handle_api_bt_devices() {
@@ -338,8 +340,11 @@ static void handle_api_bt_connect() {
                   "{\"error\":\"Provide speaker name or MAC\"}");
     return;
   }
-  bt_manager_connect(name, mac);
   s_server.send(200, "application/json", "{\"status\":\"connecting\"}");
+  vTaskDelay(pdMS_TO_TICKS(50));
+  // Stop Wi-Fi SoftAP before starting A2DP connection so Bluedroid/SBC has full DRAM
+  web_server_stop();
+  bt_manager_connect(name, mac);
 }
 
 static void handle_api_bt_disconnect() {

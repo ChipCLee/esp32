@@ -36,8 +36,8 @@ void oled_ui_init() {
 static void poll_boot_button() {
     static bool btn_down = false;
     static uint32_t down_ms = 0;
-    static bool long_handled = false;
-    static bool portal_handled = false;
+    static bool hold_handled = false;
+    static uint32_t last_click_ms = 0;
 
     bool pressed = (digitalRead(PIN_BOOT_BTN) == LOW);
     uint32_t now = millis();
@@ -45,27 +45,37 @@ static void poll_boot_button() {
     if (pressed && !btn_down) {
         btn_down = true;
         down_ms = now;
-        long_handled = false;
-        portal_handled = false;
-    } else if (pressed && btn_down) {
-        uint32_t held = now - down_ms;
-        if (!portal_handled && held >= 3500) {
-            portal_handled = true;
-            long_handled = true;
-            mp3_player_enter_portal_mode();
-        } else if (!long_handled && held >= 1500) {
-            long_handled = true;
-            mp3_player_next();
+        hold_handled = false;
+    } else if (pressed && btn_down && !hold_handled) {
+        if (now - down_ms >= 2000) {
+            hold_handled = true;
+            last_click_ms = 0;
+            app_toggle_mode();
         }
     } else if (!pressed && btn_down) {
-        if (!long_handled && !portal_handled && (now - down_ms >= 50)) {
+        if (!hold_handled && (now - down_ms >= 50)) {
+            if (app_get_mode() == APP_MODE_BLUETOOTH) {
+                if (last_click_ms != 0 && (now - last_click_ms <= 450)) {
+                    last_click_ms = 0;
+                    mp3_player_next();
+                } else {
+                    last_click_ms = now;
+                }
+            }
+        }
+        btn_down = false;
+    }
+
+    // Commit single short press once double-click window expires
+    if (last_click_ms != 0 && !btn_down && (now - last_click_ms > 450)) {
+        last_click_ms = 0;
+        if (app_get_mode() == APP_MODE_BLUETOOTH) {
             if (mp3_player_get_state() == PLAYER_STOPPED) {
-                mp3_player_next();
+                mp3_player_play_selected();
             } else {
                 mp3_player_toggle_pause();
             }
         }
-        btn_down = false;
     }
 }
 
@@ -101,6 +111,7 @@ void oled_ui_task(void* param) {
 
     for (;;) {
         poll_boot_button();
+        bt_manager_poll();
 
         if (s_oled_ready) {
             player_state_t pstate = mp3_player_get_state();
@@ -121,15 +132,17 @@ void oled_ui_task(void* param) {
             else                               s_display.print(F("[] STOP "));
 
             s_display.setCursor(54, 2);
-            if (bt_conn) {
+            if (app_get_mode() == APP_MODE_WIFI) {
+                s_display.print(F("192.168.4.1"));
+            } else if (bt_conn) {
                 char short_bt[13];
                 strncpy(short_bt, bt_name, 12);
                 short_bt[12] = '\0';
                 s_display.printf("BT:%s", short_bt);
             } else if (bt_scan) {
-                s_display.print(F("BT:SCAN..."));
+                s_display.print(F("BT:PAIR..."));
             } else {
-                s_display.print(F("192.168.4.1"));
+                s_display.print(F("BT:CONN..."));
             }
             s_display.drawFastHLine(0, 14, OLED_WIDTH, SSD1306_WHITE);
 
@@ -168,6 +181,36 @@ void oled_ui_task(void* param) {
             s_display.display();
         }
 
-        vTaskDelay(pdMS_TO_TICKS(66)); // ~15 FPS
+        if (Serial.available()) {
+            String cmd = Serial.readStringUntil('\n');
+            cmd.trim();
+            if (cmd == "scan") {
+                Serial.println("[CMD] Triggering bt_manager_start_scan()");
+                bt_manager_start_scan();
+            } else if (cmd == "bt") {
+                if (app_get_mode() == APP_MODE_WIFI) {
+                    app_toggle_mode();
+                } else {
+                    Serial.println("[CMD] Already in Bluetooth mode");
+                }
+            } else if (cmd == "status") {
+                char p[32] = {0}, t[36] = {0}, a[36] = {0}, bn[36] = {0}, bm[18] = {0};
+                bool bc = false, bs = false;
+                uint8_t vl = 0, vr = 0;
+                mp3_player_get_now_playing(p, sizeof(p), t, sizeof(t), a, sizeof(a));
+                mp3_player_get_vu(&vl, &vr);
+                uint32_t pcm_in = 0, a2dp_out = 0, ring_av = 0;
+                mp3_player_get_debug_stats(&pcm_in, &a2dp_out, &ring_av);
+                bt_manager_get_status(&bc, &bs, bn, sizeof(bn), bm, sizeof(bm));
+                player_state_t st = mp3_player_get_state();
+                Serial.printf("[STATUS] mode=%s state=%s bt_conn=%d bt_scan=%d bt='%s' (%s) track='%s' (%s) vu=%u/%u pcm_in=%u a2dp_out=%u underruns=%u heap=%u\n",
+                              app_get_mode() == APP_MODE_WIFI ? "WIFI" : "BLUETOOTH",
+                              st == PLAYER_PLAYING ? "PLAYING" : (st == PLAYER_PAUSED ? "PAUSED" : "STOPPED"),
+                              (int)bc, (int)bs, bn, bm, t, p, (unsigned)vl, (unsigned)vr,
+                              (unsigned)pcm_in, (unsigned)a2dp_out, (unsigned)ring_av,
+                              (unsigned)ESP.getFreeHeap());
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(mp3_player_get_state() == PLAYER_PLAYING ? 150 : 66));
     }
 }

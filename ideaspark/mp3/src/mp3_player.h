@@ -14,6 +14,7 @@ bool mp3_extract_metadata(File& f, const char* path, char* out_title, size_t tit
 
 // Transport controls
 bool mp3_player_play(const char* path);
+void mp3_player_play_selected();
 void mp3_player_pause();
 void mp3_player_resume();
 void mp3_player_toggle_pause();
@@ -30,6 +31,7 @@ void mp3_player_get_now_playing(char* out_path, size_t path_len,
                                 char* out_title, size_t title_len,
                                 char* out_artist, size_t artist_len);
 void mp3_player_get_vu(uint8_t* out_left, uint8_t* out_right);
+void mp3_player_get_debug_stats(uint32_t* out_pcm_in, uint32_t* out_a2dp_out, uint32_t* out_ring_avail);
 
 // Called by BluetoothA2DPSource audio callback on Core 0
 int32_t mp3_player_read_a2dp_frames(uint8_t* frame_buf, int32_t frame_count);

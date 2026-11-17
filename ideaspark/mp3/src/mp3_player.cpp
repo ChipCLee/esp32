@@ -1,11 +1,13 @@
 #include "mp3_player.h"
 #include "web_server.h"
+#include "bt_manager.h"
 #include <MP3DecoderHelix.h>
+#include <Preferences.h>
 
 using namespace libhelix;
 
-// 8 KB Lock-Free Stereo PCM Ring Buffer (2048 stereo frames @ 44.1kHz = ~46ms)
-#define PCM_RING_FRAMES     2048
+// 16 KB Lock-Free Stereo PCM Ring Buffer (4096 stereo frames @ 44.1kHz = ~93ms)
+#define PCM_RING_FRAMES     4096
 #define PCM_RING_MASK       (PCM_RING_FRAMES - 1)
 
 typedef struct __attribute__((packed)) {
@@ -27,6 +29,9 @@ static volatile bool s_file_open = false;
 static volatile uint8_t s_volume = 80;       // 0..100
 static volatile uint8_t s_vu_left = 0;       // 0..100
 static volatile uint8_t s_vu_right = 0;      // 0..100
+static volatile uint32_t s_dbg_pcm_in = 0;
+static volatile uint32_t s_dbg_a2dp_out = 0;
+static volatile uint32_t s_dbg_underruns = 0;
 
 static char s_cur_path[32]   = {0};
 static char s_cur_title[36]  = "No Track Loaded";
@@ -34,7 +39,7 @@ static char s_cur_artist[36] = "Upload MP3 @ 192.168.4.1";
 
 static MP3DecoderHelix* s_helix = nullptr;
 static File s_audio_file;
-static uint8_t s_mp3_io_buf[1024];
+static uint8_t s_mp3_io_buf[256];
 
 static inline uint32_t ring_free_frames() {
     uint32_t used = (s_ring_head - s_ring_tail) & PCM_RING_MASK;
@@ -213,7 +218,7 @@ static void on_helix_pcm_data(MP3FrameInfo &info, int16_t *pcm_buffer, size_t le
         size_t i = 0;
         while (i < in_frames && !s_stop_requested) {
             if (ring_free_frames() == 0) {
-                vTaskDelay(pdMS_TO_TICKS(5));
+                vTaskDelay(pdMS_TO_TICKS(2));
                 continue;
             }
             int32_t l = (chans == 1) ? pcm_buffer[i] : pcm_buffer[i * 2];
@@ -226,6 +231,7 @@ static void on_helix_pcm_data(MP3FrameInfo &info, int16_t *pcm_buffer, size_t le
             uint32_t head = s_ring_head;
             s_pcm_ring[head] = out_f;
             s_ring_head = (head + 1) & PCM_RING_MASK;
+            s_dbg_pcm_in++;
             i++;
         }
     } else {
@@ -234,7 +240,7 @@ static void on_helix_pcm_data(MP3FrameInfo &info, int16_t *pcm_buffer, size_t le
         double pos = 0.0;
         while ((size_t)pos < in_frames && !s_stop_requested) {
             if (ring_free_frames() == 0) {
-                vTaskDelay(pdMS_TO_TICKS(5));
+                vTaskDelay(pdMS_TO_TICKS(2));
                 continue;
             }
             size_t idx = (size_t)pos;
@@ -259,6 +265,33 @@ void mp3_player_init() {
     // so Wi-Fi SoftAP can run at boot within ESP32 DRAM limits.
     s_helix = new MP3DecoderHelix(on_helix_pcm_data);
     mp3_player_refresh_library();
+
+    Preferences prefs;
+    prefs.begin("player_cfg", true);
+    String sel = prefs.getString("selected", "");
+    prefs.end();
+
+    if (state_mutex && xSemaphoreTake(state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        int found_idx = -1;
+        if (sel.length() > 0) {
+            for (size_t i = 0; i < s_track_count; ++i) {
+                if (strcmp(s_tracks[i].path, sel.c_str()) == 0) {
+                    found_idx = (int)i;
+                    break;
+                }
+            }
+        }
+        if (found_idx < 0 && s_track_count > 0) {
+            found_idx = 0;
+        }
+        if (found_idx >= 0) {
+            s_current_idx = found_idx;
+            strncpy(s_cur_path, s_tracks[found_idx].path, sizeof(s_cur_path) - 1);
+            strncpy(s_cur_title, s_tracks[found_idx].title, sizeof(s_cur_title) - 1);
+            strncpy(s_cur_artist, s_tracks[found_idx].artist, sizeof(s_cur_artist) - 1);
+        }
+        xSemaphoreGive(state_mutex);
+    }
 }
 
 void mp3_player_refresh_library() {
@@ -321,8 +354,15 @@ bool mp3_player_play(const char* path) {
     if (!path || path[0] == '\0') return false;
 
     mp3_player_stop_and_close();
-    // Stop Wi-Fi SoftAP before allocating MP3DecoderHelix (~36 KB) for playback
+    // Stop Wi-Fi SoftAP before allocating MP3DecoderHelix (~36 KB) and BT A2DP for playback
+    app_set_bluetooth_mode();
     web_server_stop();
+    bt_manager_connect_saved();
+
+    Preferences prefs;
+    prefs.begin("player_cfg", false);
+    prefs.putString("selected", path);
+    prefs.end();
 
     if (state_mutex && xSemaphoreTake(state_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
         strncpy(s_cur_path, path, sizeof(s_cur_path) - 1);
@@ -348,6 +388,14 @@ bool mp3_player_play(const char* path) {
     s_stop_requested = false;
     s_state = PLAYER_PLAYING;
     return true;
+}
+
+void mp3_player_play_selected() {
+    if (s_cur_path[0] != '\0') {
+        mp3_player_play(s_cur_path);
+    } else if (s_track_count > 0) {
+        mp3_player_play(s_tracks[0].path);
+    }
 }
 
 void mp3_player_pause() {
@@ -437,9 +485,16 @@ void mp3_player_get_vu(uint8_t* out_left, uint8_t* out_right) {
     if (out_right) *out_right = s_vu_right;
 }
 
+void mp3_player_get_debug_stats(uint32_t* out_pcm_in, uint32_t* out_a2dp_out, uint32_t* out_ring_avail) {
+    if (out_pcm_in)     *out_pcm_in     = s_dbg_pcm_in;
+    if (out_a2dp_out)   *out_a2dp_out   = s_dbg_a2dp_out;
+    if (out_ring_avail) *out_ring_avail = s_dbg_underruns;
+}
+
 // Called from Core 0 by BluetoothA2DPSource to pull 44.1kHz stereo PCM frames
 int32_t mp3_player_read_a2dp_frames(uint8_t* frame_buf, int32_t frame_count) {
     if (!frame_buf || frame_count <= 0) return 0;
+    s_dbg_a2dp_out += (uint32_t)frame_count;
 
     pcm_frame_t* frames = (pcm_frame_t*)frame_buf;
     if (s_state != PLAYER_PLAYING) {
@@ -451,6 +506,7 @@ int32_t mp3_player_read_a2dp_frames(uint8_t* frame_buf, int32_t frame_count) {
 
     int32_t max_l = 0, max_r = 0;
     int32_t read_cnt = 0;
+    static int16_t s_last_l = 0, s_last_r = 0;
 
     while (read_cnt < frame_count && ring_avail_frames() > 0) {
         uint32_t tail = s_ring_tail;
@@ -458,6 +514,8 @@ int32_t mp3_player_read_a2dp_frames(uint8_t* frame_buf, int32_t frame_count) {
         s_ring_tail = (tail + 1) & PCM_RING_MASK;
 
         frames[read_cnt++] = f;
+        s_last_l = f.ch1;
+        s_last_r = f.ch2;
 
         int32_t al = abs((int32_t)f.ch1);
         int32_t ar = abs((int32_t)f.ch2);
@@ -465,11 +523,16 @@ int32_t mp3_player_read_a2dp_frames(uint8_t* frame_buf, int32_t frame_count) {
         if (ar > max_r) max_r = ar;
     }
 
-    // Zero-fill any remaining tail frames on underrun
-    while (read_cnt < frame_count) {
-        frames[read_cnt].ch1 = 0;
-        frames[read_cnt].ch2 = 0;
-        read_cnt++;
+    // Smoothly decay last sample on underrun to avoid hard click/crackle
+    if (read_cnt < frame_count) {
+        s_dbg_underruns = s_dbg_underruns + (uint32_t)(frame_count - read_cnt);
+        while (read_cnt < frame_count) {
+            s_last_l = (int16_t)(((int32_t)s_last_l * 15) >> 4);
+            s_last_r = (int16_t)(((int32_t)s_last_r * 15) >> 4);
+            frames[read_cnt].ch1 = s_last_l;
+            frames[read_cnt].ch2 = s_last_r;
+            read_cnt++;
+        }
     }
 
     uint8_t target_l = (uint8_t)constrain((max_l * 100) / 24000, 0, 100);
@@ -546,21 +609,26 @@ void mp3_decoder_task(void* param) {
             if (bytes_read > 0 && s_helix) {
                 s_helix->write(s_mp3_io_buf, bytes_read);
             } else if (eof) {
-                // Close current file and auto-advance to next track (Jukebox mode)
-                if (fs_mutex && xSemaphoreTake(fs_mutex, pdMS_TO_TICKS(500)) == pdTRUE) {
-                    s_audio_file.close();
-                    s_file_open = false;
-                    open_path[0] = '\0';
-                    xSemaphoreGive(fs_mutex);
-                }
-                if (s_track_count > 0) {
-                    mp3_player_next();
+                if (s_track_count <= 1) {
+                    // Seamless single-track loop (zero gap, no NVS wear)
+                    if (fs_mutex && xSemaphoreTake(fs_mutex, pdMS_TO_TICKS(500)) == pdTRUE) {
+                        s_audio_file.seek(0);
+                        xSemaphoreGive(fs_mutex);
+                    }
+                    if (s_helix) s_helix->flush();
                 } else {
-                    s_state = PLAYER_STOPPED;
+                    // Close current file and auto-advance/loop playlist
+                    if (fs_mutex && xSemaphoreTake(fs_mutex, pdMS_TO_TICKS(500)) == pdTRUE) {
+                        s_audio_file.close();
+                        s_file_open = false;
+                        open_path[0] = '\0';
+                        xSemaphoreGive(fs_mutex);
+                    }
+                    mp3_player_next();
                 }
             }
         } else {
-            vTaskDelay(pdMS_TO_TICKS(5));
+            vTaskDelay(pdMS_TO_TICKS(2));
         }
     }
 }

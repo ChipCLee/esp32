@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <LittleFS.h>
+#include <Preferences.h>
 #include <esp_bt.h>
 
 #include "types.h"
@@ -10,6 +11,30 @@
 
 SemaphoreHandle_t fs_mutex = nullptr;
 SemaphoreHandle_t state_mutex = nullptr;
+static volatile app_mode_t s_app_mode = APP_MODE_WIFI;
+
+app_mode_t app_get_mode() {
+    return s_app_mode;
+}
+
+void app_set_bluetooth_mode() {
+    s_app_mode = APP_MODE_BLUETOOTH;
+}
+
+void app_toggle_mode() {
+    app_mode_t next_mode = (s_app_mode == APP_MODE_WIFI) ? APP_MODE_BLUETOOTH : APP_MODE_WIFI;
+    Serial.printf("[MODE] Switching %s -> %s Mode (restarting for clean DRAM)...\n",
+                  s_app_mode == APP_MODE_WIFI ? "Wi-Fi" : "Bluetooth",
+                  next_mode == APP_MODE_WIFI ? "Wi-Fi" : "Bluetooth");
+    Preferences prefs;
+    prefs.begin("app_cfg", false);
+    prefs.putUChar("mode", (uint8_t)next_mode);
+    prefs.end();
+
+    mp3_player_stop_and_close();
+    delay(100);
+    ESP.restart();
+}
 
 void setup() {
     Serial.begin(115200);
@@ -35,23 +60,31 @@ void setup() {
                       (unsigned)LittleFS.usedBytes(), (unsigned)LittleFS.totalBytes());
     }
 
-    // 4. Initialize Bluetooth A2DP Source first, then Wi-Fi SoftAP, OLED, and MP3 Player
-    Serial.printf("[BOOT] Free Heap before BT: %u (max block: %u)\n",
-                  (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+    // 4. Read persisted boot mode (default: Wi-Fi Config Mode)
+    {
+        Preferences prefs;
+        prefs.begin("app_cfg", true);
+        uint8_t m = prefs.getUChar("mode", (uint8_t)APP_MODE_WIFI);
+        prefs.end();
+        s_app_mode = (m == (uint8_t)APP_MODE_BLUETOOTH) ? APP_MODE_BLUETOOTH : APP_MODE_WIFI;
+    }
+
     bt_manager_init();
-    Serial.printf("[BOOT] Free Heap after BT: %u (max block: %u)\n",
-                  (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
-    web_server_init();
-    Serial.printf("[BOOT] Free Heap after WiFi: %u (max block: %u)\n",
-                  (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
     oled_ui_init();
     mp3_player_init();
-    Serial.printf("[BOOT] Free Heap after MP3: %u (max block: %u)\n",
-                  (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
 
-    // 5. Pin Application Tasks to Core 1 (APP_CPU) so Core 0 (PRO_CPU) handles Wi-Fi & A2DP cleanly
-    xTaskCreatePinnedToCore(mp3_decoder_task, "mp3_dec", 4096, nullptr, 3, nullptr, 1);
-    xTaskCreatePinnedToCore(web_server_task,  "web_srv", 4096, nullptr, 2, nullptr, 1);
+    if (s_app_mode == APP_MODE_BLUETOOTH) {
+        Serial.printf("[BOOT] Mode: BLUETOOTH (free heap=%u, max block=%u)\n",
+                      (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+        bt_manager_enter_bluetooth_mode();
+        xTaskCreatePinnedToCore(mp3_decoder_task, "mp3_dec", 6144, nullptr, 3, nullptr, 1);
+    } else {
+        Serial.printf("[BOOT] Mode: WIFI (free heap=%u, max block=%u)\n",
+                      (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+        web_server_init();
+        xTaskCreatePinnedToCore(web_server_task,  "web_srv", 6144, nullptr, 2, nullptr, 1);
+        xTaskCreatePinnedToCore(mp3_decoder_task, "mp3_dec", 4096, nullptr, 3, nullptr, 1);
+    }
 
     Serial.printf("[BOOT] Free Heap after init: %u bytes\n", (unsigned)ESP.getFreeHeap());
 }

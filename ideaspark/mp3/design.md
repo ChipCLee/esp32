@@ -7,9 +7,11 @@ The goal of this project is to transform the **Ideaspark ESP32 Development Board
 Leveraging the `ESP32-WROOM-32`'s dual-core Tensilica Xtensa LX6 CPU, 4 MB SPI Flash, Wi-Fi 4 (`802.11 b/g/n`), and **Bluetooth Classic v4.2 (`BR/EDR` A2DP + GAP)** radio, the system provides four core capabilities without requiring any external hardware or internet connection:
 
 1. **Local Wi-Fi Web Portal & MP3 Song Uploader**: Hosts a standalone Wi-Fi Access Point (`SSID: ideaspark-mp3`, IP: `http://192.168.4.1`) with an embedded single-page web application allowing users to upload `.mp3` files directly into onboard **`LittleFS` Flash storage**, view storage capacity, and manage the song library.
-2. **Web-Based Bluetooth Speaker Discovery & Pairing Page**: Scans for nearby Bluetooth Classic (`BR/EDR`) speakers and headphones using `esp_bt_gap_start_discovery()`, displays discovered devices with RSSI in the web UI, pairs/connects the `BluetoothA2DPSource` stream to the user-selected speaker, and saves the speaker MAC/name in NVS (`Preferences`) for automatic reconnection.
-3. **Web Playback & Transport Controller**: Provides interactive web controls to **Play, Pause/Resume, Skip Next/Previous, Select Track, and Adjust Volume (`0–100%`)** with live playback status synchronization.
-4. **Onboard 0.96" OLED "Now Playing" HUD & `BOOT` Button Control**: Renders the **Track Title, Artist, Playback/Bluetooth connection status, and real-time Left/Right Stereo Audio VU Meter bars** on the hardwired 128×64 SSD1306 I2C OLED (`SDA = GPIO 21`, `SCL = GPIO 22`), while using the onboard **`BOOT` button (`GPIO 0`, Right side)** as a physical **Play/Pause** toggle.
+2. **Two-Mode Radio & Memory Architecture (Wi-Fi Mode ↔ Bluetooth Mode)**: Because the `ESP32-WROOM-32` has no PSRAM (~180 KB usable DRAM heap) and a single shared 2.4 GHz radio, the system operates in two mutually exclusive modes toggled by holding the right-side **`BOOT` button (`GPIO 0`, ≥ 2.0s)**:
+   - **Wi-Fi Mode (Config & Upload Portal)**: Broadcasts `ideaspark-mp3` (`http://192.168.4.1`) with Bluetooth off (~110 KB free heap) for fast MP3 uploads, track selection, and Bluetooth speaker pairing configuration.
+   - **Bluetooth Mode (A2DP Playback)**: Turns off Wi-Fi (`WIFI_OFF`), automatically connects to the saved Bluetooth speaker (or discovers and pairs with an available speaker if none is saved), displays the connected speaker name on the OLED, and automatically starts playing the selected MP3.
+3. **Web Playback & Track Selection**: Allows selecting the active MP3 track (persisted to NVS), managing the `LittleFS` library, and saving the target Bluetooth speaker MAC/Name in NVS (`Preferences`).
+4. **Onboard 0.96" OLED "Now Playing" HUD & `BOOT` Button Control**: Renders the **Track Title, Artist, Playback/Mode status (`192.168.4.1` vs `BT:<Speaker>`), and real-time Left/Right Stereo Audio VU Meter bars** on the hardwired 128×64 SSD1306 I2C OLED (`SDA = GPIO 21`, `SCL = GPIO 22`), while the right-side **`BOOT` button (`GPIO 0`)** handles **Play/Pause** (short press), **Next Track** (double press), and **Wi-Fi ↔ Bluetooth Mode Toggle** (hold ≥ 2.0s).
 
 ---
 
@@ -26,18 +28,18 @@ Leveraging the `ESP32-WROOM-32`'s dual-core Tensilica Xtensa LX6 CPU, 4 MB SPI F
 | **MP3-FR-5** | **Bluetooth `A2DP Source` MP3 Streaming** | Decode `.mp3` files from `LittleFS` in real time using the lightweight `libhelix-mp3` decoder, convert/resample to **44.1 kHz, 16-bit stereo PCM**, and feed the `BluetoothA2DPSource` SBC encoder via a lock-free ring buffer. |
 | **MP3-FR-6** | **Web Play / Pause & Transport Control** | Expose `POST /api/player/control` and `GET /api/player/status` to **Play** a selected `.mp3`, **Pause / Resume**, skip **Next / Previous**, and set digital **Volume (`0–100%`)** from the web page. |
 | **MP3-FR-7** | **0.96" OLED Live Metadata & Stereo VU Bars** | Drive the onboard 128×64 SSD1306 OLED (`GPIO 21` SDA, `GPIO 22` SCL) at ~15 FPS to display:<br>1. Top status bar: Bluetooth Speaker connection state & Play/Pause icon.<br>2. **Track Title** (auto-scrolling if `> 21` characters) and **Artist Name**.<br>3. Real-time **Left (`L:`) and Right (`R:`) Stereo Audio VU Meter bars** computed from the decoded PCM samples. |
-| **MP3-FR-8** | **Hardware `BOOT` Button (`GPIO 0`) Play/Pause** | Poll the onboard **`BOOT` button (`GPIO 0`)** with software debouncing (`50 ms`). Pressing `BOOT` toggles **Play / Pause** immediately (or starts the first track in the library if stopped) and updates both the OLED and Web UI. |
+| **MP3-FR-8** | **Hardware `BOOT` Button (`GPIO 0`) Mode & Transport** | Poll the onboard **`BOOT` button (`GPIO 0`, right side)** with software debouncing (`50 ms`). **Hold ≥ 2.0s** toggles **Wi-Fi Mode ↔ Bluetooth Mode**; in Bluetooth Mode, **short press** toggles **Play/Pause** and **double press** skips to **Next Track**. |
 
 ### 2.2 Non-Functional & Hardware Fitment Requirements (NFR)
 
 * **MP3-NFR-1 (4 MB Flash Partition Fitment):** Deploy a custom `partitions.csv` allocating **`1.875 MB` (`1,966,080 bytes`)** to the `app0` firmware partition and **`2.06 MB` (`2,162,688 bytes`)** to the `LittleFS` (`spiffs`) MP3 storage partition so the combined Wi-Fi + Bluedroid `A2DP Source` + MP3 decoder firmware (`~1.58 MB`) fits with `> 300 KB` Flash headroom while maximizing onboard song storage.
-* **MP3-NFR-2 (520 KB SRAM Budget & BLE Memory Release):** Because the `ESP32-WROOM-32` has 520 KB SRAM (and no external PSRAM), the firmware must release unused BLE controller memory **at the very start of `setup()` while `esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_IDLE`** (before `btStart()` or `a2dp_source.start()`) via `esp_bt_controller_mem_release(ESP_BT_MODE_BLE)` (saving `~30 KB` DRAM), use a fixed `16 KB` PCM ring buffer, and maintain **`> 70 KB` free dynamic heap** during active Wi-Fi + A2DP streaming.
+* **MP3-NFR-2 (520 KB SRAM Budget & Two-Mode Isolation):** Because the `ESP32-WROOM-32` has ~180 KB usable DRAM heap (and no external PSRAM), the firmware releases unused BLE controller memory (`esp_bt_controller_mem_release(ESP_BT_MODE_BLE)`, saving `~30 KB` DRAM), uses an `8 KB` PCM ring buffer (`2048` stereo frames), and keeps Wi-Fi SoftAP and Bluetooth A2DP + `MP3DecoderHelix` (~36 KB) in **mutually exclusive modes** so both modes operate with ample free heap and zero OOM panics.
 * **MP3-NFR-3 (Dual-Core Task Isolation):** Pin the ESP-IDF Wi-Fi driver and Bluedroid `A2DP` SBC encoder tasks to **Core 0 (`PRO_CPU`)**, and pin the `mp3_decoder_task`, `web_server_task`, and `oled_ui_task` to **Core 1 (`APP_CPU`)** to prevent HTTP requests or OLED I2C transfers from starving the real-time A2DP audio callback.
 * **MP3-NFR-4 (Flash Write, `LittleFS` 31-Char Path Limit & File Handle Safety):**
   1. SPI Flash sector erases during `LittleFS` writes briefly suspend cache access. Starting an MP3 upload (`POST /api/mp3/upload`) or deleting a track (`POST /api/mp3/delete`) must acquire `fs_mutex` and synchronously stop/close any open `File` handle in `mp3_decoder_task` (`player_stop_and_close()`) before modifying `LittleFS`.
   2. Uploaded filenames must be sanitized and truncated to `<= 27` characters + `.mp3` (`<= 31` chars total including leading `/`) to satisfy ESP32 `LittleFS` path limits, while preserving full ID3 Title/Artist metadata.
   3. Uploads must check free `LittleFS` space (`totalBytes() - usedBytes()`) and abort cleanly with `HTTP 507` (removing any partial file) if storage is full.
-* **MP3-NFR-5 (2.4 GHz Wi-Fi + Bluetooth Classic Coexistence):** Enable ESP-IDF software coexistence and `esp_wifi_set_ps(WIFI_PS_MIN_MODEM)` so the shared 2.4 GHz antenna prioritizes periodic A2DP SBC audio slots while keeping the web dashboard responsive; skip artificial `vTaskDelay` sleeps during active `UPLOAD_FILE_WRITE` chunks so 1.5 MB uploads finish in seconds.
+* **MP3-NFR-5 (2.4 GHz Radio Exclusivity):** Because Wi-Fi SoftAP and Bluetooth Classic share the single 2.4 GHz antenna on `ESP32-WROOM-32`, operating them in separate modes (**Wi-Fi Mode** vs **Bluetooth Mode**) eliminates 2.4 GHz airtime contention, ensures fast `LittleFS` MP3 uploads, and prevents A2DP audio stutters.
 
 ---
 
@@ -267,9 +269,10 @@ The onboard **SSD1306 128×64 monochrome OLED** (`SDA = GPIO 21`, `SCL = GPIO 22
   * `L:` (`y = 42`, height `8 px`, width `0..96 px` + peak hold tick mark).
   * `R:` (`y = 53`, height `8 px`, width `0..96 px` + peak hold tick mark).
 * **Hardware `BOOT` Button (`GPIO 0`, Right Side Next to USB)**:
-  * Sampled every `20 ms` in `oled_ui_task` with a `50 ms` debounce filter.
-  * **Short Press (`< 1.5s`)**: Toggles **Play / Pause** (`player_toggle_pause()`). If no track was loaded yet and `.mp3` files exist in `LittleFS`, starts playing the first track automatically!
-  * **Long Press (`> 1.5s`)**: Skips to the **Next Track** (`player_next()`), giving single-button hardware control over both Play/Pause and Next Track!
+  * Sampled every `66 ms` in `oled_ui_task` with a `50 ms` debounce filter.
+  * **Hold (`>= 2.0s`)**: Toggles between **Wi-Fi Mode** (`ideaspark-mp3` SoftAP at `192.168.4.1`, OLED shows `192.168.4.1`) and **Bluetooth Mode** (turns off Wi-Fi, connects to saved speaker or discovers & pairs an available speaker, displays connected speaker name on OLED, and auto-plays the selected MP3).
+  * **Short Press (`< 2.0s`)** (in Bluetooth Mode): Toggles **Play / Pause** (`mp3_player_toggle_pause()`).
+  * **Double Press** (in Bluetooth Mode): Skips to **Next Track** (`mp3_player_next()`).
 
 ---
 

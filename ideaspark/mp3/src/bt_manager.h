@@ -8,6 +8,9 @@ bool bt_manager_is_scanning();
 size_t bt_manager_get_devices(bt_device_info_t* out_devs, size_t max_devs);
 
 bool bt_manager_connect(const char* name, const char* mac_str);
+void bt_manager_connect_saved();
+void bt_manager_enter_bluetooth_mode();
+void bt_manager_poll();
 void bt_manager_disconnect();
 
 bool bt_manager_is_connected();

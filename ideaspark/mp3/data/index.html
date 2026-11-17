@@ -396,17 +396,39 @@ async function fetchBtDevices() {
 async function scanBtSpeakers() {
   const btn = document.getElementById('btnBtScan');
   btn.disabled = true;
-  await fetch('/api/bt/scan', { method: 'POST' });
+  try {
+    const res = await fetch('/api/bt/scan', {
+      method: 'POST',
+      signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
+    });
+    if (!res.ok) {
+      btn.disabled = false;
+      return;
+    }
+  } catch (e) {
+    btn.disabled = false;
+    return;
+  }
   fetchStatus();
+  const startedAt = Date.now();
   const pollTimer = setInterval(async () => {
     await fetchBtDevices();
-    await fetchStatus();
+    try {
+      const stRes = await fetch('/api/status');
+      if (stRes.ok) {
+        const st = await stRes.json();
+        if (!st.bt_scanning && Date.now() - startedAt > 3000) {
+          clearInterval(pollTimer);
+          btn.disabled = false;
+        }
+      }
+    } catch (e) {}
   }, 1500);
   setTimeout(() => {
     clearInterval(pollTimer);
     btn.disabled = false;
     fetchBtDevices();
-  }, 9500);
+  }, 26000);
 }
 
 async function connectBt(name, mac) {

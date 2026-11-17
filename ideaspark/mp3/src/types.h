@@ -31,6 +31,11 @@
 #define LITTLEFS_MAX_PATH   31    // ESP32 LittleFS path limit (including '/')
 
 typedef enum : uint8_t {
+    APP_MODE_WIFI = 0,
+    APP_MODE_BLUETOOTH = 1
+} app_mode_t;
+
+typedef enum : uint8_t {
     PLAYER_STOPPED = 0,
     PLAYER_PLAYING = 1,
     PLAYER_PAUSED  = 2
@@ -55,3 +60,7 @@ typedef struct {
 // ============================================================================
 extern SemaphoreHandle_t fs_mutex;
 extern SemaphoreHandle_t state_mutex;
+
+app_mode_t app_get_mode();
+void app_toggle_mode();
+void app_set_bluetooth_mode();

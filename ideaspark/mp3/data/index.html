@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Ideaspark ESP32 MP3 &amp; Bluetooth A2DP Hub</title>
+<style>
+:root {
+  --bg: #0b0f19;
+  --panel: #131b2e;
+  --panel-alt: #1a2540;
+  --border: #283655;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --accent: #0ea5e9;
+  --green: #10b981;
+  --amber: #f59e0b;
+  --danger: #ef4444;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  padding: 16px;
+}
+.container { max-width: 1120px; margin: 0 auto; }
+header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+.title-group h1 { font-size: 1.25rem; font-weight: 700; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.title-group p { font-size: 0.82rem; color: var(--muted); margin-top: 2px; }
+.pill {
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+.pill.ok { background: rgba(16, 185, 129, 0.15); color: var(--green); border-color: rgba(16, 185, 129, 0.4); }
+.pill.warn { background: rgba(245, 158, 11, 0.18); color: #fbbf24; border-color: rgba(245, 158, 11, 0.45); }
+.sys-meta { display: flex; gap: 16px; font-size: 0.82rem; color: var(--muted); }
+.sys-meta strong { color: var(--text); }
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+@media (max-width: 840px) { .grid-2 { grid-template-columns: 1fr; } }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.card-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 0.92rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.card-body { padding: 16px; }
+
+button {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--panel-alt);
+  color: var(--text);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+button:hover:not(:disabled) { filter: brightness(1.18); border-color: #475569; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.primary { background: #0284c7; border-color: #38bdf8; }
+button.success { background: #059669; border-color: #34d399; }
+button.danger { background: rgba(239, 68, 68, 0.18); color: #fca5a5; border-color: rgba(239, 68, 68, 0.4); }
+button.sm { padding: 5px 10px; font-size: 0.76rem; }
+
+.now-playing-box {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+.np-title { font-size: 1.1rem; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-artist { font-size: 0.85rem; color: var(--muted); margin-bottom: 10px; }
+
+.vu-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 0.78rem; font-family: monospace; }
+.vu-track { flex: 1; height: 10px; background: #1e293b; border-radius: 999px; overflow: hidden; }
+.vu-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #10b981, #38bdf8, #f59e0b); transition: width 0.08s linear; }
+
+.transport { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.vol-row { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--muted); }
+input[type="range"] { flex: 1; accent-color: var(--accent); }
+input[type="text"], input[type="file"] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 0.84rem;
+}
+
+.bt-list {
+  max-height: 185px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  margin: 10px 0;
+}
+.bt-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(40, 54, 85, 0.5);
+  font-size: 0.83rem;
+}
+.bt-item:last-child { border-bottom: none; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.78rem; color: var(--muted); }
+
+.upload-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+.prog-wrap { width: 100%; height: 8px; background: var(--bg); border-radius: 999px; overflow: hidden; display: none; margin-bottom: 12px; }
+.prog-fill { height: 100%; width: 0%; background: var(--green); transition: width 0.1s linear; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid rgba(40, 54, 85, 0.5); }
+th { background: var(--panel-alt); color: var(--muted); font-weight: 600; }
+tr.playing-row { background: rgba(14, 165, 233, 0.1); }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="title-group">
+      <h1>
+        🎵 Ideaspark ESP32 MP3 &amp; Bluetooth A2DP Hub
+        <span id="btBadge" class="pill">BT: Disconnected</span>
+      </h1>
+      <p>Wi-Fi AP: <strong>ideaspark-mp3</strong> (192.168.4.1) &bull; Onboard 0.96&quot; OLED &amp; BOOT Button (GPIO 0)</p>
+    </div>
+    <div class="sys-meta">
+      <div>Heap: <strong id="freeHeap">-- KB</strong></div>
+      <div>Storage: <strong id="fsUsage">-- / -- MB</strong></div>
+    </div>
+  </header>
+
+  <div class="grid-2">
+    <!-- Now Playing & Transport Card -->
+    <div class="card" style="margin-bottom:0;">
+      <div class="card-header">
+        <span>🎧 Now Playing &amp; Transport</span>
+        <span id="playerStatePill" class="pill">STOPPED</span>
+      </div>
+      <div class="card-body">
+        <div class="now-playing-box">
+          <div class="np-title" id="npTitle">No Track Loaded</div>
+          <div class="np-artist" id="npArtist">Upload an MP3 below to start</div>
+          <div class="vu-row">
+            <span>L</span>
+            <div class="vu-track"><div class="vu-fill" id="vuL"></div></div>
+            <span id="vuLVal" style="width:32px;text-align:right;">0%</span>
+          </div>
+          <div class="vu-row">
+            <span>R</span>
+            <div class="vu-track"><div class="vu-fill" id="vuR"></div></div>
+            <span id="vuRVal" style="width:32px;text-align:right;">0%</span>
+          </div>
+        </div>
+
+        <div class="transport">
+          <button onclick="sendControl('prev')">⏮ Prev</button>
+          <button class="primary" id="btnPlayPause" onclick="sendControl('toggle')">⏯ Play / Pause</button>
+          <button onclick="sendControl('next')">⏭ Next</button>
+          <button class="danger" onclick="sendControl('stop')">⏹ Stop</button>
+        </div>
+
+        <div class="vol-row">
+          <span>🔊 Volume</span>
+          <input type="range" id="volSlider" min="0" max="100" value="80" oninput="onVolInput(this.value)" onchange="sendVolume(this.value)">
+          <strong id="volVal" style="width:38px;color:var(--text);">80%</strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bluetooth Speaker Pairing Card -->
+    <div class="card" style="margin-bottom:0;">
+      <div class="card-header">
+        <span>🔊 Bluetooth Speaker Pairing (A2DP)</span>
+        <span id="btScanPill" class="pill">Idle</span>
+      </div>
+      <div class="card-body">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+          <button class="primary" id="btnBtScan" onclick="scanBtSpeakers()">🔍 Scan Speakers</button>
+          <button class="danger" onclick="disconnectBt()">❌ Disconnect</button>
+        </div>
+
+        <div class="bt-list" id="btDeviceList">
+          <div style="padding:18px;text-align:center;color:var(--muted);font-size:0.83rem;">
+            Put your Bluetooth speaker in pairing mode and click <strong>🔍 Scan Speakers</strong>.
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <input type="text" id="manualBtInput" placeholder="Speaker Name or MAC (AA:BB:CC:11:22:33)" style="flex:1;min-width:200px;">
+          <button class="success" onclick="connectManualBt()">🔗 Pair / Connect</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MP3 Upload & Library Card -->
+  <div class="card">
+    <div class="card-header">
+      <span>📂 MP3 Song Library &amp; Uploader (LittleFS Flash)</span>
+      <span id="trackCountLabel" class="mono">0 songs</span>
+    </div>
+    <div class="card-body">
+      <div class="upload-bar">
+        <input type="file" id="mp3FileInput" accept=".mp3,audio/mpeg" style="flex:1;min-width:220px;">
+        <button class="primary" id="btnUpload" onclick="uploadMp3()">⬆️ Upload MP3 to Board</button>
+        <span id="uploadStatus" style="font-size:0.82rem;color:var(--muted);"></span>
+      </div>
+      <div class="prog-wrap" id="progWrap"><div class="prog-fill" id="progFill"></div></div>
+
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Track Title</th>
+              <th>Artist</th>
+              <th>File</th>
+              <th>Size</th>
+              <th style="width:170px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="trackTableBody">
+            <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px;">No MP3 files uploaded yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentFile = '';
+let currentState = 'STOPPED';
+let uploading = false;
+
+function esc(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function fmtBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  return (b / 1048576).toFixed(2) + ' MB';
+}
+
+async function fetchStatus() {
+  if (uploading) return;
+  try {
+    const res = await fetch('/api/status');
+    if (!res.ok) return;
+    const s = await res.json();
+
+    currentFile = s.file || '';
+    currentState = s.state || 'STOPPED';
+
+    document.getElementById('npTitle').textContent = s.title || 'No Track Loaded';
+    document.getElementById('npArtist').textContent = s.artist || '';
+
+    const pPill = document.getElementById('playerStatePill');
+    pPill.textContent = currentState;
+    pPill.className = 'pill' + (currentState === 'PLAYING' ? ' ok' : (currentState === 'PAUSED' ? ' warn' : ''));
+
+    const btnPP = document.getElementById('btnPlayPause');
+    btnPP.textContent = (currentState === 'PLAYING') ? '⏸ Pause' : '▶ Play';
+
+    document.getElementById('vuL').style.width = (s.vu_l || 0) + '%';
+    document.getElementById('vuLVal').textContent = (s.vu_l || 0) + '%';
+    document.getElementById('vuR').style.width = (s.vu_r || 0) + '%';
+    document.getElementById('vuRVal').textContent = (s.vu_r || 0) + '%';
+
+    document.getElementById('freeHeap').textContent = Math.round((s.free_heap || 0) / 1024) + ' KB';
+    document.getElementById('fsUsage').textContent = fmtBytes(s.fs_used || 0) + ' / ' + fmtBytes(s.fs_total || 0);
+
+    const btBadge = document.getElementById('btBadge');
+    const btScanPill = document.getElementById('btScanPill');
+    if (s.bt_connected) {
+      btBadge.textContent = 'BT: 🟢 ' + (s.bt_name || s.bt_mac || 'Connected');
+      btBadge.className = 'pill ok';
+    } else if (s.bt_scanning) {
+      btBadge.textContent = 'BT: Scanning...';
+      btBadge.className = 'pill warn';
+    } else {
+      btBadge.textContent = 'BT: Disconnected';
+      btBadge.className = 'pill';
+    }
+    btScanPill.textContent = s.bt_scanning ? 'Scanning...' : 'Idle';
+    btScanPill.className = 'pill' + (s.bt_scanning ? ' warn' : '');
+
+    if (document.activeElement !== document.getElementById('volSlider')) {
+      document.getElementById('volSlider').value = s.volume ?? 80;
+      document.getElementById('volVal').textContent = (s.volume ?? 80) + '%';
+    }
+  } catch (e) {}
+}
+
+async function fetchTracks() {
+  try {
+    const res = await fetch('/api/mp3/list');
+    if (!res.ok) return;
+    const data = await res.json();
+    const tracks = data.tracks || [];
+    document.getElementById('trackCountLabel').textContent = tracks.length + ' song(s)';
+
+    const tbody = document.getElementById('trackTableBody');
+    if (tracks.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px;">No MP3 files uploaded yet.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = tracks.map(t => {
+      const isCur = (t.path === currentFile);
+      const isPlaying = isCur && currentState === 'PLAYING';
+      return `<tr class="${isCur ? 'playing-row' : ''}">
+        <td><strong>${isPlaying ? '▶ ' : ''}${esc(t.title)}</strong></td>
+        <td>${esc(t.artist)}</td>
+        <td class="mono">${esc(t.path)}</td>
+        <td class="mono">${fmtBytes(t.size)}</td>
+        <td>
+          ${isPlaying
+            ? `<button class="sm" onclick="sendControl('pause')">⏸ Pause</button>`
+            : `<button class="sm primary" onclick="playFile('${esc(t.path)}')">▶ Play</button>`}
+          <button class="sm danger" onclick="deleteFile('${esc(t.path)}')">🗑️</button>
+        </td>
+      </tr>`;
+    }).join('');
+  } catch (e) {}
+}
+
+async function fetchBtDevices() {
+  try {
+    const res = await fetch('/api/bt/devices');
+    if (!res.ok) return;
+    const data = await res.json();
+    const devs = data.devices || [];
+    const box = document.getElementById('btDeviceList');
+    if (devs.length === 0) {
+      box.innerHTML = '<div style="padding:18px;text-align:center;color:var(--muted);font-size:0.83rem;">No Bluetooth speakers found yet. Click <strong>🔍 Scan Speakers</strong>.</div>';
+      return;
+    }
+    box.innerHTML = devs.map(d => `
+      <div class="bt-item">
+        <div>
+          <strong>${esc(d.name)}</strong>
+          <div class="mono">${esc(d.mac)} &bull; ${d.rssi} dBm</div>
+        </div>
+        <button class="sm success" onclick="connectBt('${esc(d.name)}','${esc(d.mac)}')">🔗 Connect</button>
+      </div>
+    `).join('');
+  } catch (e) {}
+}
+
+async function scanBtSpeakers() {
+  const btn = document.getElementById('btnBtScan');
+  btn.disabled = true;
+  await fetch('/api/bt/scan', { method: 'POST' });
+  fetchStatus();
+  const pollTimer = setInterval(async () => {
+    await fetchBtDevices();
+    await fetchStatus();
+  }, 1500);
+  setTimeout(() => {
+    clearInterval(pollTimer);
+    btn.disabled = false;
+    fetchBtDevices();
+  }, 9500);
+}
+
+async function connectBt(name, mac) {
+  await fetch('/api/bt/connect', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ name, mac })
+  });
+  setTimeout(fetchStatus, 600);
+}
+
+function connectManualBt() {
+  const val = (document.getElementById('manualBtInput').value || '').trim();
+  if (!val) return;
+  const isMac = /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/.test(val);
+  connectBt(isMac ? '' : val, isMac ? val : '');
+}
+
+async function disconnectBt() {
+  await fetch('/api/bt/disconnect', { method: 'POST' });
+  setTimeout(fetchStatus, 400);
+}
+
+async function sendControl(action, file) {
+  await fetch('/api/player/control', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ action, file: file || '' })
+  });
+  await fetchStatus();
+  await fetchTracks();
+}
+
+function playFile(path) { sendControl('play', path); }
+
+async function deleteFile(path) {
+  await fetch('/api/mp3/delete', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ file: path })
+  });
+  await fetchTracks();
+  await fetchStatus();
+}
+
+function onVolInput(v) { document.getElementById('volVal').textContent = v + '%'; }
+
+async function sendVolume(v) {
+  await fetch('/api/player/control', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ action: 'volume', volume: parseInt(v, 10) })
+  });
+}
+
+function uploadMp3() {
+  const input = document.getElementById('mp3FileInput');
+  const file = input.files && input.files[0];
+  const st = document.getElementById('uploadStatus');
+  if (!file) { st.textContent = 'Select an .mp3 file first.'; return; }
+
+  uploading = true;
+  document.getElementById('btnUpload').disabled = true;
+  const pWrap = document.getElementById('progWrap');
+  const pFill = document.getElementById('progFill');
+  pWrap.style.display = 'block';
+  pFill.style.width = '0%';
+  st.textContent = 'Uploading...';
+
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/mp3/upload', true);
+  xhr.upload.onprogress = (e) => {
+    if (e.lengthComputable) {
+      const pct = Math.round((e.loaded / e.total) * 100);
+      pFill.style.width = pct + '%';
+      st.textContent = 'Uploading ' + pct + '%...';
+    }
+  };
+  xhr.onload = () => {
+    uploading = false;
+    document.getElementById('btnUpload').disabled = false;
+    if (xhr.status === 200) {
+      st.textContent = 'Uploaded!';
+      input.value = '';
+      fetchTracks();
+      fetchStatus();
+    } else {
+      st.textContent = 'Upload failed (' + xhr.status + '): ' + xhr.responseText;
+    }
+    setTimeout(() => { pWrap.style.display = 'none'; }, 1500);
+  };
+  xhr.onerror = () => {
+    uploading = false;
+    document.getElementById('btnUpload').disabled = false;
+    st.textContent = 'Network error during upload.';
+  };
+  const fd = new FormData();
+  fd.append('file', file);
+  xhr.send(fd);
+}
+
+fetchStatus();
+fetchTracks();
+fetchBtDevices();
+setInterval(fetchStatus, 500);
+setInterval(fetchTracks, 4000);
+</script>
+</body>
+</html>

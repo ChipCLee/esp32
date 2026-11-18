@@ -199,15 +199,15 @@ void oled_ui_task(void* param) {
                 uint8_t vl = 0, vr = 0;
                 mp3_player_get_now_playing(p, sizeof(p), t, sizeof(t), a, sizeof(a));
                 mp3_player_get_vu(&vl, &vr);
-                uint32_t pcm_in = 0, a2dp_out = 0, ring_av = 0;
-                mp3_player_get_debug_stats(&pcm_in, &a2dp_out, &ring_av);
+                uint32_t pcm_in = 0, a2dp_out = 0, underruns = 0;
+                mp3_player_get_debug_stats(&pcm_in, &a2dp_out, &underruns);
                 bt_manager_get_status(&bc, &bs, bn, sizeof(bn), bm, sizeof(bm));
                 player_state_t st = mp3_player_get_state();
                 Serial.printf("[STATUS] mode=%s state=%s bt_conn=%d bt_scan=%d bt='%s' (%s) track='%s' (%s) vu=%u/%u pcm_in=%u a2dp_out=%u underruns=%u heap=%u\n",
                               app_get_mode() == APP_MODE_WIFI ? "WIFI" : "BLUETOOTH",
                               st == PLAYER_PLAYING ? "PLAYING" : (st == PLAYER_PAUSED ? "PAUSED" : "STOPPED"),
                               (int)bc, (int)bs, bn, bm, t, p, (unsigned)vl, (unsigned)vr,
-                              (unsigned)pcm_in, (unsigned)a2dp_out, (unsigned)ring_av,
+                              (unsigned)pcm_in, (unsigned)a2dp_out, (unsigned)underruns,
                               (unsigned)ESP.getFreeHeap());
             }
         }

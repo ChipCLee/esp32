@@ -77,13 +77,13 @@ void setup() {
         Serial.printf("[BOOT] Mode: BLUETOOTH (free heap=%u, max block=%u)\n",
                       (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
         bt_manager_enter_bluetooth_mode();
-        xTaskCreatePinnedToCore(mp3_decoder_task, "mp3_dec", 6144, nullptr, 3, nullptr, 1);
+        xTaskCreatePinnedToCore(mp3_decoder_task, "mp3_dec", 6144, nullptr, 5, nullptr, 1);
     } else {
         Serial.printf("[BOOT] Mode: WIFI (free heap=%u, max block=%u)\n",
                       (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
         web_server_init();
         xTaskCreatePinnedToCore(web_server_task,  "web_srv", 6144, nullptr, 2, nullptr, 1);
-        xTaskCreatePinnedToCore(mp3_decoder_task, "mp3_dec", 4096, nullptr, 3, nullptr, 1);
+        xTaskCreatePinnedToCore(mp3_decoder_task, "mp3_dec", 4096, nullptr, 5, nullptr, 1);
     }
 
     Serial.printf("[BOOT] Free Heap after init: %u bytes\n", (unsigned)ESP.getFreeHeap());

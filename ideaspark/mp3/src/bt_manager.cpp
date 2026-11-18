@@ -2,6 +2,12 @@
 #include "mp3_player.h"
 #include "web_server.h"
 #include <BluetoothA2DPSource.h>
+#ifdef CONFIG_BT_A2DP_USE_EXTERNAL_CODEC
+#include <AudioTools/AudioCodecs/CodecSBC.h>
+#include <A2DPEncoderSBC.h>
+static audio_tools::SBCEncoder s_sbc_encoder;
+static A2DPEncoderSBC s_a2dp_sbc_encoder(s_sbc_encoder, 35);
+#endif
 #include <Preferences.h>
 #include <esp_wifi.h>
 
@@ -20,6 +26,7 @@ static volatile bool s_fallback_scan_pending = false;
 static volatile bool s_pending_fallback_scan = false;
 static volatile bool s_was_connected = false;
 static volatile bool s_pending_reconnect = false;
+static volatile bool s_pending_link_tune = false;
 static bool s_bt_started = false;
 static uint32_t s_scan_start_ms = 0;
 static uint32_t s_scan_timeout_ms = 10000UL;
@@ -60,6 +67,7 @@ static void a2dp_conn_state_cb(esp_a2d_connection_state_t state, void* ptr) {
         s_auto_pair_mode = false;
         s_fallback_scan_pending = false;
         s_pending_reconnect = false;
+        s_pending_link_tune = true;
         digitalWrite(PIN_STATUS_LED, HIGH);
         Serial.printf("[BT] Connected to A2DP Sink: %s (%s)\n", s_connected_name, s_connected_mac_str);
         if (s_auto_play_on_connect) {
@@ -178,6 +186,10 @@ static void bt_ensure_started(bool auto_connect_target = false) {
     s_a2dp_source.set_on_connection_state_changed(a2dp_conn_state_cb);
     s_a2dp_source.set_data_callback_in_frames(a2dp_get_data_frames);
     s_a2dp_source.set_local_name("Ideaspark-MP3");
+#ifdef CONFIG_BT_A2DP_USE_EXTERNAL_CODEC
+    bool enc_ok = s_a2dp_source.add_encoder(s_a2dp_sbc_encoder);
+    Serial.printf("[BT] External SBC encoder registered: %d\n", (int)enc_ok);
+#endif
 
     std::vector<const char*> empty_names;
     s_a2dp_source.start(empty_names);
@@ -249,6 +261,14 @@ void bt_manager_enter_bluetooth_mode() {
 }
 
 void bt_manager_poll() {
+    if (s_pending_link_tune) {
+        s_pending_link_tune = false;
+        esp_bt_gap_set_scan_mode(ESP_BT_NON_CONNECTABLE, ESP_BT_NON_DISCOVERABLE);
+        if (s_has_target_mac) {
+            esp_err_t qe = esp_bt_gap_set_qos(s_target_mac, 8);
+            Serial.printf("[BT] Link tuned: scan=OFF, qos(t_poll=8)->0x%x\n", (unsigned)qe);
+        }
+    }
     if (s_pending_reconnect) {
         s_pending_reconnect = false;
         Serial.printf("[BT] Link dropped; reconnecting to %s (%s)...\n", s_connected_name, s_connected_mac_str);

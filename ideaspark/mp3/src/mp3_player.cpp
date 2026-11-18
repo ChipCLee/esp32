@@ -12,8 +12,9 @@ using namespace libhelix;
 // trying 16384 frames (~370 ms @ 44.1 kHz), then 8192, then 4096.
 // Index updates go through s_ring_mux, which also serves as the cross-core memory barrier.
 #define PCM_RING_FRAMES_MAX     16384
-#define PCM_RING_FRAMES_MIN     4096
-#define PCM_RING_HEAP_RESERVE   (24 * 1024)   // keep this much heap free for Bluedroid
+#define PCM_RING_FRAMES_MIN     1024
+#define PCM_RING_HEAP_RESERVE_BT_IDLE (24 * 1024) // reserve for Bluedroid before BT connects
+#define PCM_RING_HEAP_RESERVE_BT_CONN (2 * 1024)  // BT already connected; small safety margin
 #define PCM_PREFILL_MAX_FRAMES  8192          // ~186 ms startup / re-buffer latency
 #define PCM_PUBLISH_INTERVAL    256           // publish writer head every N frames
 #define MP3_FRAME_SAMPLES       1152
@@ -54,6 +55,8 @@ static volatile uint8_t s_vu_left = 0;       // 0..100
 static volatile uint8_t s_vu_right = 0;      // 0..100
 static volatile uint32_t s_dbg_pcm_in = 0;
 static volatile uint32_t s_dbg_a2dp_out = 0;
+static volatile uint32_t s_dbg_a2dp_calls = 0;
+static volatile int32_t  s_dbg_last_fc = 0;
 static volatile uint32_t s_dbg_underruns = 0;
 
 static char s_cur_path[32]   = {0};
@@ -69,11 +72,12 @@ static uint32_t s_audio_end = 0;         // one past last audio byte (excludes I
 // Allocate the ring buffer once (decoder task). Returns true if a buffer is available.
 static bool ring_alloc() {
     if (s_ring) return true;
+    size_t reserve = bt_manager_is_connected() ? PCM_RING_HEAP_RESERVE_BT_CONN : PCM_RING_HEAP_RESERVE_BT_IDLE;
     for (uint32_t frames = PCM_RING_FRAMES_MAX; frames >= PCM_RING_FRAMES_MIN; frames >>= 1) {
         size_t bytes = frames * sizeof(pcm_frame_t);
         size_t free_heap = heap_caps_get_free_size(MALLOC_CAP_8BIT);
         size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
-        if (largest < bytes || free_heap < bytes + PCM_RING_HEAP_RESERVE) continue;
+        if (largest < bytes || free_heap < bytes + reserve) continue;
         pcm_frame_t* buf = (pcm_frame_t*)heap_caps_malloc(bytes, MALLOC_CAP_8BIT);
         if (!buf) continue;
         memset(buf, 0, bytes);
@@ -630,6 +634,8 @@ void mp3_player_get_debug_stats(uint32_t* out_pcm_in, uint32_t* out_a2dp_out, ui
 int32_t mp3_player_read_a2dp_frames(uint8_t* frame_buf, int32_t frame_count) {
     if (!frame_buf || frame_count <= 0) return 0;
     s_dbg_a2dp_out += (uint32_t)frame_count;
+    s_dbg_a2dp_calls++;
+    s_dbg_last_fc = frame_count;
 
     pcm_frame_t* frames = (pcm_frame_t*)frame_buf;
     static int16_t s_last_l = 0, s_last_r = 0;
@@ -759,6 +765,8 @@ void mp3_decoder_task(void* param) {
     char open_path[32] = {0};
     uint32_t last_log_ms = millis();
     uint32_t last_log_underruns = s_dbg_underruns;
+    uint32_t last_log_a2dp = s_dbg_a2dp_out;
+    uint32_t last_log_calls = s_dbg_a2dp_calls;
 
     for (;;) {
         if (s_state != PLAYER_PLAYING || s_stop_requested) {
@@ -795,13 +803,20 @@ void mp3_decoder_task(void* param) {
                         strncpy(s_cur_artist, a_buf, sizeof(s_cur_artist) - 1);
                         xSemaphoreGive(state_mutex);
                     }
+                    bool helix_ok = true;
                     if (s_helix) {
                         s_helix->end();
-                        s_helix->begin();
+                        helix_ok = s_helix->begin();
+                        if (!helix_ok) {
+                            Serial.printf("[MP3] Helix begin() failed (free=%u, max=%u)\n",
+                                          (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+                            s_helix->end();
+                        }
                     }
-                    if (ring_alloc()) {
+                    if (helix_ok && ring_alloc()) {
                         ring_flush();
                     } else {
+                        if (s_helix) s_helix->end();
                         s_audio_file.close();
                         s_file_open = false;
                         open_path[0] = '\0';
@@ -819,12 +834,19 @@ void mp3_decoder_task(void* param) {
         // Periodic playback diagnostics
         uint32_t now = millis();
         if (now - last_log_ms >= 5000UL) {
+            uint32_t dt = now - last_log_ms;
             uint32_t u = s_dbg_underruns;
-            Serial.printf("[MP3] ring %u/%u frames, underruns +%u (total %u)%s\n",
+            uint32_t a = s_dbg_a2dp_out;
+            uint32_t c = s_dbg_a2dp_calls;
+            uint32_t a2dp_fps = (dt > 0) ? (uint32_t)(((uint64_t)(a - last_log_a2dp) * 1000ULL) / dt) : 0;
+            Serial.printf("[MP3] ring %u/%u, underruns +%u (%u), a2dp %u fps (%u calls, fc=%d)%s\n",
                           (unsigned)ring_queued_frames(), (unsigned)s_ring_frames,
                           (unsigned)(u - last_log_underruns), (unsigned)u,
+                          (unsigned)a2dp_fps, (unsigned)(c - last_log_calls), (int)s_dbg_last_fc,
                           s_buffering ? " [buffering]" : "");
             last_log_underruns = u;
+            last_log_a2dp = a;
+            last_log_calls = c;
             last_log_ms = now;
         }
 

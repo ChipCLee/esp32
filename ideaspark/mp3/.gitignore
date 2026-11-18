@@ -5,3 +5,9 @@
 .vscode/ipch
 .cache
 .vscode/
+managed_components/
+dependencies.lock
+sdkconfig.esp32dev
+managed_components/
+dependencies.lock
+sdkconfig.esp32dev
